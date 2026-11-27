@@ -132,6 +132,10 @@ _Avoid_: Paired sampling, shared seed
 The position and velocity of the ball at the moment it leaves the bowler's hand. The input that defines a delivery before any randomness.
 _Avoid_: Launch, initial state, start
 
+**Delivery length**:
+Where a delivery is aimed to bounce, as one of three presets measured from the batter's stumps: good length (6.5 m), yorker (0.4 m behind the stumps, so it arrives on the full at their base) and bouncer (8.65 m). The outcome model ignores the height the ball arrives at, so a length changes the path, not how a played ball is scored.
+_Avoid_: Pitch length (the playing strip's own), line (the sideways aim), full, short
+
 **Fourth-stump corridor**:
 The channel just outside a right-hander's off stump, one imaginary stump wide, where a batter cannot tell whether a delivery must be played.
 _Avoid_: Corridor of uncertainty, channel, off-stump line

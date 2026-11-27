@@ -1,11 +1,13 @@
-// Sound: a small Web Audio synth, no samples and no dependencies. The audio
-// context is only created or resumed inside a user gesture, and the choice of
-// on or off is remembered. Besides the ball and bat it keeps a quiet crowd
-// murmur going and swells a crowd reaction over it for each outcome.
+// Sound: a small Web Audio synth with no dependencies; the only recordings are
+// the commentary clips (commentary.js), which play through a broadcast
+// microphone chain built here. The audio context is only created or resumed
+// inside a user gesture, and the choice of on or off is remembered. Besides
+// the ball and bat it keeps a quiet crowd murmur going and swells a crowd
+// reaction over it for each outcome; the crowd ducks under the commentator.
 //
-// `cuesFor` and `clapTimes` are pure and tested under node; nothing at the
-// top of this module touches the browser.
-import { setCommentarySound } from './commentary.js';
+// `cuesFor`, `clapTimes` and `saturationCurve` are pure and tested under node;
+// nothing at the top of this module touches the browser.
+import { connectCommentary, setCommentarySound } from './commentary.js';
 
 // Which sounds an outcome animation makes (names from outcomes.js), and when,
 // in seconds from the moment the ball meets the bat or reaches the stumps.
@@ -36,6 +38,17 @@ export function clapTimes(seconds, perSecond, random = Math.random) {
     }
   }
   return claps.sort((a, b) => a.at - b.at);
+}
+
+// A gentle odd-harmonic saturation for the microphone chain: tanh, scaled so a full-scale
+// input still comes out at full scale. `drive` near 1 is very light.
+export function saturationCurve(points = 1024, drive = 1.6) {
+  const curve = new Float32Array(points);
+  for (let i = 0; i < points; i += 1) {
+    const x = (i / (points - 1)) * 2 - 1;
+    curve[i] = Math.tanh(drive * x) / Math.tanh(drive);
+  }
+  return curve;
 }
 
 const STORAGE_KEY = 'fourth-stump:sound';
@@ -133,6 +146,8 @@ export function createAudio() {
   let context = null;
   let noiseBuffer = null;
   let murmur = null; // { source, lfo, envelope } while the crowd murmurs
+  let crowd = null; // the gain every crowd sound goes through, so it can duck under the voice
+  let microphone = null; // the input of the commentator's microphone chain
   const lastCrowd = {};
   const history = []; // the last sounds scheduled, for checking by hand and in the browser test
 
@@ -186,6 +201,46 @@ export function createAudio() {
     return buffer;
   }
 
+  function crowdBus() {
+    if (!crowd) {
+      crowd = context.createGain();
+      crowd.connect(context.destination);
+    }
+    return crowd;
+  }
+
+  // The commentator's microphone: no rumble below 120 Hz, a presence lift at 2.5 kHz,
+  // a little saturation and light compression.
+  function voiceInput() {
+    if (!microphone) {
+      const highpass = filtered('highpass', 120, 0.7, 0);
+      const presence = filtered('peaking', 2500, 1, 0);
+      presence.gain.value = 4;
+      const shaper = context.createWaveShaper();
+      shaper.curve = saturationCurve();
+      shaper.oversample = '2x';
+      const compressor = context.createDynamicsCompressor();
+      Object.entries({ threshold: -20, knee: 6, ratio: 3, attack: 0.005, release: 0.15 })
+        .forEach(([name, value]) => { compressor[name].value = value; });
+      const level = context.createGain();
+      level.gain.value = 0.85;
+      highpass.connect(presence).connect(shaper).connect(compressor).connect(level).connect(context.destination);
+      microphone = highpass;
+    }
+    return microphone;
+  }
+
+  // points: [[seconds after start, gain]], from commentary.js; none puts the crowd back.
+  function duckCrowd(points, start = 0) {
+    if (!context || !crowd) return;
+    const { gain } = crowd;
+    const now = context.currentTime;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    if (points.length === 0) gain.linearRampToValueAtTime(1, now + 0.2);
+    points.forEach(([at, value]) => gain.linearRampToValueAtTime(value, Math.max(start + at, now)));
+  }
+
   function filtered(type, frequency, q, start) {
     const filter = context.createBiquadFilter();
     filter.type = type;
@@ -194,7 +249,7 @@ export function createAudio() {
     return filter;
   }
 
-  function schedule(part, start, level) {
+  function schedule(part, start, level, output = context.destination) {
     const envelope = context.createGain();
     const peak = part.gain * level;
     const end = start + part.length;
@@ -206,7 +261,7 @@ export function createAudio() {
       if (part.claps) envelope.gain.setValueAtTime(peak, end - 0.15); // the claps carry their own swell
     }
     envelope.gain.exponentialRampToValueAtTime(0.0001, end);
-    envelope.connect(context.destination);
+    envelope.connect(output);
 
     let source;
     if (part.tone) {
@@ -241,7 +296,8 @@ export function createAudio() {
       if (context.currentTime - (lastCrowd[name] ?? -Infinity) < CROWD_GAP) return false;
       lastCrowd[name] = context.currentTime;
     }
-    voice.forEach((part) => schedule(part, context.currentTime + part.at, level));
+    const output = CROWD.has(name) ? crowdBus() : context.destination;
+    voice.forEach((part) => schedule(part, context.currentTime + part.at, level, output));
     history.push(name);
     if (history.length > 40) history.shift();
     return true;
@@ -262,7 +318,7 @@ export function createAudio() {
     lfo.frequency.value = 0.13;
     depth.gain.value = MURMUR_LEVEL * 0.35;
     lfo.connect(depth).connect(envelope.gain);
-    source.connect(filtered('lowpass', 520, 0.5, now)).connect(envelope).connect(context.destination);
+    source.connect(filtered('lowpass', 520, 0.5, now)).connect(envelope).connect(crowdBus());
     source.start(now);
     lfo.start(now);
     murmur = { source, lfo };
@@ -294,6 +350,11 @@ export function createAudio() {
     else startMurmur();
   });
 
+  connectCommentary({
+    context: () => (enabled && context?.state === 'running' ? context : null),
+    voiceInput,
+    duckCrowd,
+  });
   paint();
   return {
     button,

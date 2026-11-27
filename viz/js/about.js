@@ -25,6 +25,10 @@ export function createAbout(meta) {
       meta.wicket_cost_source === 'placeholder'
         && h('p', { class: 'note-warn', text: 'In this data file the wicket cost is a placeholder, not yet read from the run-expectancy table. The expected values will move when it is.' })),
     h('section', {},
+      h('h3', { text: 'The live engine' }),
+      h('p', { text: 'The Live engine view runs the same C++ header in your browser, compiled to WebAssembly with Emscripten, on one thread, and simulates 50,000 deliveries each time a control changes.' }),
+      h('p', { text: 'Its results are statistically reproducible against the native engine: they agree within sampling noise, not bit for bit, because the two builds use different compilers and maths libraries.' })),
+    h('section', {},
       h('h3', { text: 'Reading the stumps plot' }),
       h('ul', { class: 'about-key' },
         h('li', {}, h('span', { class: 'key key-mean' }), 'Solid dot: the mean delivery.'),

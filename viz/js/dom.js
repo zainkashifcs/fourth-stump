@@ -34,7 +34,8 @@ export function segmented({ legend, hideLegend = false, options, value, onChange
     h('div', { class: 'segmented-options' }, inputs.map(({ input, label }) => [input, label])),
   );
   const set = (next) => inputs.forEach(({ option, input }) => { input.checked = option.value === next; });
-  return { el, set };
+  const disable = (off) => inputs.forEach(({ input }) => { input.disabled = off; });
+  return { el, set, disable };
 }
 
 // A native checkbox with its label, styled as a switch.

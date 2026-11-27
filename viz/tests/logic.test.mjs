@@ -8,10 +8,207 @@ import { validate, findScenario, venueKeys } from '../js/data.js';
 import { animationFor } from '../js/outcomes.js';
 import { clapTimes, cuesFor, soundNames } from '../js/audio.js';
 import { CAMERAS, RELEASE, cutAt, fovFor, shotFor } from '../js/director.js';
-import { BODY_LIMIT, COVER, KEEPER_Y, STANCE_X, batterRootX, extendToKeeper } from '../js/geometry.js';
-import { LINES, kindOf, mostDramatic, pickVoice } from '../js/commentary.js';
+import {
+  BODY_LIMIT, COVER, KEEPER_Y, POPPING_CREASE, STANCE_X, batterRootX, extendToKeeper, frontFoot,
+} from '../js/geometry.js';
+import {
+  BEAT_RATES, DUCK, LINES, SWELL, beatPlan, crowdEnvelope, estimateSeconds, kindOf, lineFor, mostDramatic, pickVoice, rankVoices, speechBounds,
+} from '../js/commentary.js';
+import { saturationCurve } from '../js/audio.js';
 import { replaySchedule } from '../js/boot.js';
 import { clipTime } from '../js/models/frames.js';
+import {
+  DELIVERIES, STEPS, arrivalPoints, asScenario, bowlIndex, bowledWith, coalesce, latestOnly, lengthOptions, nearestScenario, runArgs,
+  standardDelivery, statusLine, windRange,
+} from '../js/live-logic.js';
+
+// A stand-in for data/live.json, shaped as the real one.
+const LIVE = {
+  meta: { generated: '2026-11-27', ball_age: 12, bowling_end: 0 },
+  release: { right: { x: 0.75, z: 2.08, line: 0 }, left: { x: -0.75, z: 2.08, line: 0 } },
+  lengths: { good: { bounce_y: 6.5, from_release: 12.4 }, yorker: { bounce_y: -0.4, from_release: 19.3 }, bouncer: { bounce_y: 8.65, from_release: 10.25 } },
+  venues: {
+    lords: { name: "Lord's", conditions: { e_z: 0.52 }, swing: { right: 0.14, left: -0.14 }, crosswind: 1, max_crosswind: 5, catch_conversion: 0.8, runs_middled: 0.9 },
+    perth: { name: 'Perth', conditions: { e_z: 0.62 }, swing: { right: 0.12 }, crosswind: 4.5, max_crosswind: 4.899, catch_conversion: 0.7, runs_middled: 0.95 },
+  },
+  wicket_cost: { ball_age: 12, by_wickets_lost: [40, 39, 38, 37, 36, 35, 34, 33, 32, 31] },
+};
+const LIMITS = { speedKmh: [120, 150], swing: [-0.3, 0.3], wind: [-5, 5] };
+
+test('the sliders start from the standard delivery, inside the engine limits', () => {
+  assert.deepEqual(standardDelivery(LIVE, LIMITS, 'lords', 'right'), { speedKmh: 135, swing: 0.14, crosswind: 1 });
+  assert.equal(standardDelivery(LIVE, LIMITS, 'lords', 'left').swing, -0.14);
+  // a value the file does not give starts mid-range; one outside the limits is clamped
+  assert.equal(standardDelivery(LIVE, LIMITS, 'perth', 'left').swing, 0);
+  assert.equal(standardDelivery(LIVE, { ...LIMITS, swing: [0, 0.1] }, 'lords', 'right').swing, 0.1);
+  assert.equal(standardDelivery(LIVE, { ...LIMITS, speedKmh: [140, 150] }, 'lords', 'right').speedKmh, 140);
+  // wind along the pitch narrows the crosswind allowed, rounded in to a whole step
+  assert.deepEqual(windRange(LIVE, LIMITS, 'lords'), [-5, 5]);
+  assert.deepEqual(windRange(LIVE, LIMITS, 'perth'), [-4.8, 4.8]);
+  assert.deepEqual(windRange(LIVE, { ...LIMITS, wind: [-3, 3] }, 'perth'), [-3, 3]);
+  assert.equal(standardDelivery(LIVE, LIMITS, 'perth', 'right').crosswind, 4.5);
+  assert.equal(standardDelivery(LIVE, { ...LIMITS, wind: [-4, 4] }, 'perth', 'right').crosswind, 4);
+  // the standard values fall on the slider steps
+  const onStep = (value, min, step) => Math.abs((value - min) / step - Math.round((value - min) / step)) < 1e-9;
+  assert.ok(onStep(0.14, LIMITS.swing[0], STEPS.swing) && onStep(-0.14, LIMITS.swing[0], STEPS.swing));
+  assert.ok(onStep(4.5, -4.8, STEPS.wind) && onStep(135, 120, STEPS.speedKmh));
+});
+
+test('the real live.json describes the venues of trajectories.json', () => {
+  const real = JSON.parse(readFileSync(new URL('../data/live.json', import.meta.url)));
+  const data = JSON.parse(readFileSync(new URL('../data/trajectories.json', import.meta.url)));
+  assert.deepEqual(Object.keys(real.venues), venueKeys(data));
+  assert.equal(real.wicket_cost.by_wickets_lost.length, 10);
+  data.arms.forEach((arm) => assert.ok(real.release[arm], arm));
+  assert.ok(nearestScenario(data.scenarios, { venue: 'lords', arm: 'right', ballAge: real.meta.ball_age, end: real.meta.bowling_end }));
+});
+
+test('slider state becomes the arguments of one engine run', () => {
+  const state = { venue: 'lords', arm: 'left', speedKmh: 140, swing: -0.05, crosswind: 2, wicketsLost: 3 };
+  const args = runArgs(state, LIVE);
+  assert.deepEqual(args, {
+    conditions: LIVE.venues.lords.conditions,
+    release: LIVE.release.left,
+    speedKmh: 140,
+    swing: -0.05,
+    crosswind: 2,
+    wicketCost: 37,
+    runsMiddled: 0.9,
+    catchConversion: 0.8,
+    length: 'good',
+    n: DELIVERIES,
+    seed: 1,
+  });
+  assert.equal(runArgs({ ...state, length: 'yorker' }, LIVE).length, 'yorker');
+  assert.equal(DELIVERIES, 50000);
+  assert.equal(runArgs(state, LIVE, 20000).n, 20000); // never more than the engine can hold
+  assert.equal(runArgs({ ...state, wicketsLost: 9 }, LIVE).wicketCost, 31);
+});
+
+test('an engine result is drawn under the same keys as a precomputed scenario', () => {
+  const engine = {
+    run: (args) => ({
+      n: args.n, ms: 12, pWicketLeave: 0.05, pWicketPlay: 0.04, pMiddled: 0.7, pEdged: 0.26, pEdgedCarried: 0.2, pMissed: 0.04,
+      evLeave: -2, evPlay: -0.8, best: 'play', arrivals: new Float64Array([0.2, 0.6, 0.25, 0.7, 0.3]), path: [[0, 18, 2], [0.2, 0, 0.6]], bounceIndex: -1,
+    }),
+  };
+  const args = runArgs({ venue: 'perth', arm: 'right', speedKmh: 130, swing: 0, crosswind: 0, wicketsLost: 0 }, LIVE);
+  const result = engine.run(args);
+  const scenario = asScenario(result, args.wicketCost);
+  assert.deepEqual(
+    [scenario.p_wicket_leave, scenario.p_wicket_play, scenario.p_middled, scenario.p_edged, scenario.p_missed],
+    [0.05, 0.04, 0.7, 0.26, 0.04],
+  );
+  assert.deepEqual([scenario.ev_leave, scenario.ev_play, scenario.best, scenario.wicket_cost, scenario.bounce_index], [-2, -0.8, 'play', 40, -1]);
+  assert.deepEqual(arrivalPoints(result.arrivals), [[0.2, 0.6], [0.25, 0.7]]); // an odd value left over is dropped
+  assert.deepEqual(arrivalPoints(new Float64Array(0)), []);
+});
+
+test('the fallback shows the precomputed scenario nearest the standard delivery', () => {
+  const s = (venue, arm, ballAge, end) => ({ venue, arm, ball_age: ballAge, end });
+  const scenarios = [s('lords', 'right', 1, 0), s('lords', 'right', 10, 1), s('lords', 'right', 10, 0), s('lords', 'right', 20, 0), s('lords', 'left', 10, 0), s('perth', 'right', 10, 0)];
+  assert.equal(nearestScenario(scenarios, { venue: 'lords', arm: 'right', ballAge: 12, end: 0 }), scenarios[2]);
+  assert.equal(nearestScenario(scenarios, { venue: 'lords', arm: 'right', ballAge: 12, end: 1 }), scenarios[1]);
+  assert.equal(nearestScenario(scenarios, { venue: 'lords', arm: 'right', ballAge: 16, end: 0 }), scenarios[3]);
+  assert.equal(nearestScenario(scenarios, { venue: 'lords', arm: 'left', ballAge: 80, end: 1 }), scenarios[4]); // only one there
+  assert.equal(nearestScenario(scenarios, { venue: 'newlands', arm: 'right', ballAge: 1, end: 0 }), undefined);
+  const data = JSON.parse(readFileSync(new URL('../data/trajectories.json', import.meta.url)));
+  const picked = nearestScenario(data.scenarios, { venue: 'perth', arm: 'left', ballAge: 12, end: 0 });
+  assert.deepEqual([picked.venue, picked.arm, picked.ball_age, picked.end], ['perth', 'left', 10, 0]);
+});
+
+test('the status line gives what ran, the measured time, the workers and the rate', () => {
+  assert.equal(
+    statusLine({ n: 50000, ms: 2.43, threads: 16 }),
+    '50,000 deliveries in 2.43 ms on 16 workers, 20,600,000 deliveries per second. The C++ engine compiled to WebAssembly.',
+  );
+  assert.equal(statusLine({ n: 50000, ms: 41.23, threads: 1 }).slice(0, 45), '50,000 deliveries in 41.2 ms on one worker, 1');
+  assert.equal(statusLine({ n: 50000, ms: 250 }).slice(0, 44), '50,000 deliveries in 250.0 ms on one worker,'); // an older result without `threads`
+  // a coarse timer can read zero; never print an infinite rate
+  assert.equal(statusLine({ n: 50000, ms: 0, threads: 4 }), "50,000 deliveries on 4 workers, too fast for this browser's timer to measure. The C++ engine compiled to WebAssembly.");
+});
+
+test('a run is never started while one is in flight, and only the latest request waits', async () => {
+  const started = [];
+  const finish = [];
+  const trigger = latestOnly((value) => new Promise((resolve) => { started.push(value); finish.push(resolve); }));
+  trigger(1);
+  trigger(2);
+  trigger(3);
+  assert.deepEqual(started, [1]); // 2 and 3 wait; 2 is dropped for 3
+  finish.shift()();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(started, [1, 3]);
+  finish.shift()();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(started, [1, 3]); // nothing left to run
+  trigger(4);
+  assert.deepEqual(started, [1, 3, 4]);
+  // a run that throws does not stop the next one
+  const seen = [];
+  const failing = latestOnly(async (value) => { seen.push(value); throw new Error('no'); });
+  failing(1);
+  failing(2);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(seen, [1, 2]);
+});
+
+test('"Leave one" and "Play one" bowl a delivery with that action, so every length line can be heard', () => {
+  const bouncer = { leave: 'safe', play: 'middled' };
+  const yorker = { leave: 'bowled', play: 'middled' };
+  const left = bowledWith('leave', bouncer);
+  assert.deepEqual([left.action, left.outcome, left.animation.name], ['leave', 'safe', 'left-alone']);
+  assert.equal(lineFor(left.animation.name, 'bouncer').id, 'left-alone-bouncer');
+  assert.equal(lineFor(bowledWith('leave', yorker).animation.name, 'yorker').id, 'bowled-yorker');
+  assert.equal(lineFor(bowledWith('play', yorker).animation.name, 'yorker').id, 'middled'); // played, the same ball is middled
+  assert.equal(bowledWith('play', { leave: 'safe', play: 'edged_caught' }).animation.flash, 'Caught');
+});
+
+test('each "Leave one" or "Play one" takes a fresh delivery of the batch, cycling through it', () => {
+  const picks = Array.from({ length: 6 }, (_, k) => bowlIndex(k, 4, 2));
+  assert.deepEqual(picks, [2, 3, 0, 1, 2, 3]);
+  assert.ok(Array.from({ length: 50 }, (_, k) => bowlIndex(k, 50000, 49990)).every((i) => i >= 0 && i < 50000));
+  assert.equal(new Set(Array.from({ length: 50 }, (_, k) => bowlIndex(k, 50000, 49990))).size, 50);
+});
+
+test('the length selector lists the engine\'s presets in its order, good length first', () => {
+  const lengths = { good: { bounceY: 6.5 }, yorker: { bounceY: -0.4 }, bouncer: { bounceY: 8.65 } };
+  assert.deepEqual(lengthOptions(lengths), [
+    { value: 'good', label: 'Good length' }, { value: 'yorker', label: 'Yorker' }, { value: 'bouncer', label: 'Bouncer' },
+  ]);
+  assert.deepEqual(lengthOptions({ good: {}, slower: {} }), [{ value: 'good', label: 'Good length' }, { value: 'slower', label: 'slower' }]);
+  assert.deepEqual(lengthOptions(undefined), [{ value: 'good', label: 'Good length' }]);
+});
+
+test('input events between two frames make one run, with the latest values', () => {
+  const frames = [];
+  const runs = [];
+  const trigger = coalesce((value) => runs.push(value), (callback) => frames.push(callback));
+  trigger(1);
+  trigger(2);
+  trigger(3);
+  assert.equal(frames.length, 1);
+  assert.deepEqual(runs, []);
+  frames.shift()();
+  assert.deepEqual(runs, [3]);
+  trigger(4);
+  assert.equal(frames.length, 1);
+  frames.shift()();
+  assert.deepEqual(runs, [3, 4]);
+});
+
+test('a front foot is legal only with its toe behind the popping crease at the bowler\'s end', () => {
+  const end = { stumpsY: 20.12 };
+  assert.equal(POPPING_CREASE, 1.22);
+  const legal = frontFoot(19.07, end);
+  assert.equal(legal.legal, true);
+  assert.ok(Math.abs(legal.behind - 0.17) < 1e-9); // 17 cm behind the line, towards the bowler's stumps
+  assert.equal(frontFoot(18.9, end).legal, true); // on the line still counts as behind it
+  assert.equal(frontFoot(18.85, end).legal, false); // over it: a no-ball
+  assert.ok(frontFoot(18.85, end).behind < 0);
+  assert.equal(frontFoot(Number.NaN, end).legal, false);
+});
 
 test('a clip is only ever shown on one of its baked frames', () => {
   const step = 1 / 30;
@@ -161,14 +358,25 @@ test('applause is many separate hand claps, swelling then thinning', () => {
   assert.ok(clapTimes(2, 11, random).length < clapTimes(2, 90, random).length / 4); // a pavilion ripple is sparse
 });
 
-test('the commentator has a line for every outcome and speaks the most dramatic', () => {
+test('the commentator has a line for every outcome and length, and speaks the most dramatic', () => {
   const pairs = [['leave', 'safe'], ['leave', 'bowled'], ['play', 'middled'], ['play', 'edged_safe'], ['play', 'edged_caught'], ['play', 'missed'], ['play', 'missed_bowled']];
   pairs.forEach(([action, outcome]) => {
     const kind = kindOf({ action, outcome: outcomeLabel(outcome) });
     assert.equal(kind, animationFor(action, outcome).name);
-    assert.ok(LINES[kind], kind);
+    ['good', 'yorker', 'bouncer', undefined].forEach((length) => assert.ok(lineFor(kind, length), `${kind} ${length}`));
   });
-  assert.equal(LINES.bowled, 'Bowled him! Right through the gate, timber everywhere!');
+  assert.deepEqual(lineFor('bowled').beats, ['BOWLED HIM!', 'Right through the gate, off stump out of the ground, timber everywhere!']);
+  assert.equal(lineFor('bowled').gap, 180);
+  assert.equal(lineFor('bowled', 'yorker').id, 'bowled-yorker');
+  assert.equal(lineFor('bowled', 'yorker').gap, 160);
+  assert.equal(lineFor('bowled', 'bouncer').id, 'bowled'); // no line of its own: the good-length one
+  assert.equal(lineFor('edged-caught').beats[0], 'EDGED AND GONE!');
+  assert.equal(lineFor('edged-short').beats.length, 1);
+  assert.equal(lineFor('left-alone').beats[0], 'Shouldered arms, judged to perfection on the fourth-stump line, watches it carry through.');
+  assert.equal(lineFor('left-alone', 'bouncer').beats[0], 'Sways out of the road, sharp bumper in the corridor, well left alone.');
+  assert.equal(lineFor('middled', 'yorker').id, 'middled');
+  assert.equal(lineFor('play-and-miss').beats.length, 2);
+  assert.equal(lineFor('unknown'), null);
   assert.equal(kindOf({ outcome: 'Play-and-miss, bowled' }), 'bowled');
   assert.equal(kindOf({ outcome: 'something new' }), null);
   assert.equal(mostDramatic(['middled', 'bowled', 'left-alone']), 'bowled');
@@ -181,13 +389,72 @@ test('the commentator has a line for every outcome and speaks the most dramatic'
   assert.equal(mostDramatic([]), null);
 });
 
-test('the commentator prefers an English (UK) voice', () => {
+test('every commentary line has its recorded clips, with the same words', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../audio/commentary/manifest.json', import.meta.url)));
+  assert.deepEqual(Object.keys(manifest.lines).sort(), Object.keys(LINES).sort());
+  Object.entries(LINES).forEach(([id, line]) => {
+    const clips = manifest.lines[id];
+    assert.deepEqual(clips.map((clip) => clip.text), line.beats, id);
+    clips.forEach((clip, index) => {
+      assert.equal(clip.file, `${id}-${index + 1}.mp3`);
+      const bytes = readFileSync(new URL(`../audio/commentary/${clip.file}`, import.meta.url));
+      assert.equal(bytes.length, clip.bytes, clip.file);
+      assert.ok(bytes.length < 40 * 1024, clip.file); // a few tens of kilobytes
+    });
+    assert.equal(line.gap > 0, line.beats.length > 1, id); // a breath only between two beats
+  });
+});
+
+test('the commentator prefers an English (UK) voice, then Australian, then any English', () => {
   const us = { name: 'US', lang: 'en-US' };
   const uk = { name: 'UK', lang: 'en-GB' };
+  const au = { name: 'AU', lang: 'en-AU' };
+  const fr = { name: 'FR', lang: 'fr-FR' };
   assert.equal(pickVoice([us, uk]), uk);
   assert.equal(pickVoice([us, { name: 'Android UK', lang: 'en_GB' }]).name, 'Android UK');
-  assert.equal(pickVoice([us]), null); // the browser's default voice
+  assert.deepEqual(rankVoices([fr, us, au, uk]), [uk, au, us]);
+  assert.equal(pickVoice([us, fr]), us);
+  assert.equal(pickVoice([fr]), null); // the browser's default voice
   assert.equal(pickVoice([]), null);
+});
+
+test('the call, a breath, then the clause; the crowd ducks and swells with them', () => {
+  const plan = beatPlan([0.8, 3.9], 180);
+  assert.equal(plan[0].at, 0);
+  assert.ok(plan[0].rate > plan[1].rate); // the call is quicker and higher
+  assert.ok(Math.abs(plan[0].seconds - 0.8 / BEAT_RATES[0]) < 1e-9);
+  assert.ok(Math.abs(plan[1].at - (plan[0].seconds + 0.18)) < 1e-9);
+  assert.deepEqual(beatPlan([4], 0).map((b) => [b.at, b.rate]), [[0, 1]]);
+  const dismissal = crowdEnvelope(plan, true);
+  const quiet = crowdEnvelope(plan, false);
+  assert.ok(dismissal.some(([at, gain]) => gain === SWELL && at === plan[1].at)); // swells in the breath
+  assert.ok(!quiet.some(([, gain]) => gain > 1));
+  [dismissal, quiet].forEach((points) => {
+    assert.deepEqual(points[0], [0, 1]);
+    assert.equal(points[points.length - 1][1], 1); // the crowd comes back
+    assert.ok(points.some(([, gain]) => gain === DUCK));
+    points.slice(1).forEach(([at], i) => assert.ok(at >= points[i][0])); // in time order
+  });
+  assert.ok(estimateSeconds('BOWLED HIM!') > 0.5 && estimateSeconds('BOWLED HIM!') < 1.2);
+});
+
+test('finds the speech in a decoded clip, past the encoder padding', () => {
+  const rate = 1000;
+  const samples = new Float32Array(1000);
+  samples.fill(0.2, 100, 700);
+  const { offset, seconds } = speechBounds(samples, rate, 0.003, 0.01);
+  assert.ok(Math.abs(offset - 0.09) < 1e-9);
+  assert.ok(Math.abs(seconds - 0.62) < 1e-9);
+  assert.deepEqual(speechBounds(new Float32Array(10), rate), { offset: 0, seconds: 0 });
+  assert.equal(speechBounds(Float32Array.from([0.5, 0, 0]), rate, 0.003, 0.01).offset, 0);
+});
+
+test('the microphone saturation is gentle and keeps full scale', () => {
+  const curve = saturationCurve(101, 1.6);
+  assert.ok(Math.abs(curve[0] + 1) < 1e-6 && Math.abs(curve[100] - 1) < 1e-6);
+  assert.ok(Math.abs(curve[50]) < 1e-6);
+  for (let i = 1; i < curve.length; i += 1) assert.ok(curve[i] > curve[i - 1]); // never folds back
+  assert.ok(curve[60] > 0.2 && curve[60] < 0.35); // a little lift at low level, not a fuzz box
 });
 
 test('a boot replay paces its lines and lasts about three seconds', () => {

@@ -16,7 +16,7 @@ the ground), the bat's position, and optionally `hands`, two points the hands
 reach for. A clip is a list of timed poses, sampled at every frame through a
 spline and baked, so the hands stay on the bat between the poses.
 """
-from math import cos, hypot, inf, pi, sin, sqrt
+from math import asin, atan2, cos, hypot, inf, pi, sin, sqrt
 
 import bpy
 from mathutils import Matrix, Vector
@@ -318,22 +318,29 @@ def forward(local):
     return world
 
 
-def reach(local, world, side, target, pole):
-    """Two-bone reach: turns one arm so its hand lands on `target`, elbow towards `pole`."""
-    shoulder = world["arm" + side].translation
-    to_target = target - shoulder
-    distance = min(max(to_target.length, abs(UPPER_ARM - FOREARM) + 0.02), UPPER_ARM + FOREARM - 0.005)
+def two_bone(local, world, upper, lower, lengths, target, pole):
+    """Turns a hanging limb so its end lands on `target` (or as near as it reaches), the
+    middle joint bending towards `pole`."""
+    a, b = lengths
+    root = world[upper].translation
+    to_target = target - root
+    distance = min(max(to_target.length, abs(a - b) + 0.02), a + b - 0.005)
     direction = to_target.normalized()
-    along = (UPPER_ARM ** 2 - FOREARM ** 2 + distance ** 2) / (2 * distance)
-    out = sqrt(max(UPPER_ARM ** 2 - along ** 2, 0))
+    along = (a ** 2 - b ** 2 + distance ** 2) / (2 * distance)
+    out = sqrt(max(a ** 2 - along ** 2, 0))
     bend = (pole - direction * pole.dot(direction)).normalized()
-    elbow = shoulder + direction * along + bend * out
-    hand = shoulder + direction * distance
-    parent = world["torso"].to_quaternion()
-    upper = DOWN.rotation_difference(elbow - shoulder)
-    lower = DOWN.rotation_difference(hand - elbow)
-    local["arm" + side] = (local["arm" + side][0], (parent.inverted() @ upper).to_matrix().to_4x4())
-    local["fore" + side] = (local["fore" + side][0], (upper.inverted() @ lower).to_matrix().to_4x4())
+    middle = root + direction * along + bend * out
+    end = root + direction * distance
+    parent = world[JOINTS[upper][0]].to_quaternion()
+    first = DOWN.rotation_difference(middle - root)
+    second = DOWN.rotation_difference(end - middle)
+    local[upper] = (local[upper][0], (parent.inverted() @ first).to_matrix().to_4x4())
+    local[lower] = (local[lower][0], (first.inverted() @ second).to_matrix().to_4x4())
+
+
+def reach(local, world, side, target, pole):
+    """Turns one arm so its hand lands on `target`, elbow towards `pole`."""
+    two_bone(local, world, "arm" + side, "fore" + side, (UPPER_ARM, FOREARM), target, pole)
 
 
 def bat_transform(pose):
@@ -361,8 +368,17 @@ def solve(pose):
         flat = world["shin" + foot[-1]].to_quaternion().inverted() @ world["hips"].to_quaternion()
         local[foot] = (local[foot][0], flat.to_matrix().to_4x4() @ local[foot][1])
     world = forward(local)
-    lowest = min((world[foot] @ Vector((0, ANKLE - SHIN, end))).y for foot in ("footL", "footR") for end in (HEEL, TOE))
-    local["body"] = (Vector((x, pose.get("lift", (0,))[0] - lowest, z)), Matrix.Identity(4))
+    plant = pose.get("plant")  # the front foot held flat on the ground at (x, z) from the root, turned by yaw
+    grounded = ("footL",) if plant else ("footL", "footR")
+    lowest = min((world[foot] @ Vector((0, ANKLE - SHIN, end))).y for foot in grounded for end in (HEEL, TOE))
+    local["body"] = (Vector((x, max(pose.get("lift", (0,))[0], 0) - lowest, z)), Matrix.Identity(4))
+    if plant:
+        world = forward(local)
+        ankle = Vector((plant[0] + x, SHIN - ANKLE, plant[1] + z))
+        two_bone(local, world, "legL", "shinL", (THIGH, ANKLE), ankle, Vector((0, 0, 1)))
+        world = forward(local)
+        turned = Matrix.Rotation(plant[2], 4, "Y")
+        local["footL"] = (local["footL"][0], world["shinL"].to_3x3().to_4x4().inverted() @ turned)
     bat = Matrix.Translation(BAT_REST)
     if "bat_top" in pose:
         world = forward(local)
@@ -380,6 +396,55 @@ def solve(pose):
     world["release"] = world["foreR"] @ Matrix.Translation((0, -FOREARM, 0))
     world["catch"] = Matrix.Translation((hand(world, "L") + hand(world, "R")) / 2)
     return world
+
+
+def angles(matrix):
+    """The Euler angles `euler` turns back into `matrix` (it applies Rx @ Ry @ Rz, Blender's ZYX)."""
+    e = matrix.to_euler("ZYX")
+    return (e.x, e.y, e.z)
+
+
+def sole(world, foot="footL"):
+    """The heel and toe of a foot's sole."""
+    return [world[foot] @ Vector((0, ANKLE - SHIN, end)) for end in (HEEL, TOE)]
+
+
+def planted(pose, plant):
+    """The pose with its front foot planted at `plant`, its leg angles set to what the
+    plant solves to, so neighbouring unplanted keys blend into it without a jump."""
+    world = solve({**pose, "plant": plant})
+    return {
+        **pose, "plant": plant,
+        "legL": angles(world["hips"].inverted() @ world["legL"]),
+        "shinL": angles(world["legL"].inverted() @ world["shinL"]),
+        "footL": angles(world["hips"].inverted() @ world["footL"]),  # the foot's turn from flat
+    }
+
+
+def page_scale(release_height):
+    """The size bowler.js gives the figure so its hand reaches the page's release height."""
+    return min(max(PAGE_RELEASE_HEIGHT / max(release_height, 0.5), 0.85), 1.3)
+
+
+def bowling_arm(pose, ahead, near):
+    """The pose with the bowling arm straight and its hand `ahead` page metres in front of
+    the front toe and over the front foot's lane; the arm's angle is kept within a turn of
+    `near`, so the windmill keeps turning the same way."""
+    world = solve(pose)
+    shoulder = world["armR"].translation
+    toe = sole(world)[1]
+    length, size = UPPER_ARM + FOREARM, 1.0
+    for _ in range(5):  # the page's scale depends on the height the hand ends up at
+        tx, tz = toe.x, toe.z + ahead / size
+        level = (tx - shoulder.x) ** 2 + (tz - shoulder.z) ** 2
+        assert level < length ** 2, "the release point is out of the bowling arm's reach"
+        ty = shoulder.y + sqrt(length ** 2 - level)
+        size = page_scale(ty)
+    local = world["torso"].to_3x3().inverted() @ (Vector((tx, ty, tz)) - shoulder).normalized()
+    az = asin(local.x)
+    ax = atan2(-local.z / cos(az), -local.y / cos(az))
+    ax += 2 * pi * round((near - ax) / (2 * pi))
+    return {**pose, "armR": (ax, 0, az), "foreR": (0, 0, 0)}
 
 
 def grip_gap(pose):
@@ -436,7 +501,9 @@ def sample(keys, time, loop):
     if poses[0] is poses[1]:  # and out of one
         poses[0] = poses[2]
     out = {}
-    for name in set().union(*poses):
+    if poses[1].get("plant") is not None and poses[1].get("plant") == poses[2].get("plant"):
+        out["plant"] = poses[1]["plant"]  # a foot planted at both ends stays exactly where it is
+    for name in set().union(*poses) - {"plant"}:
         values = [_flat(p.get(name, NEUTRAL.get(name, (0, 0, 0)))) for p in poses]
         mixed = [spline(*(v[i] for v in values), t) for i in range(len(values[0]))]
         out[name] = (tuple(mixed[:3]), tuple(mixed[3:])) if name == "hands" else tuple(mixed)
@@ -594,21 +661,29 @@ BACK_FOOT = {  # landed on the back foot, leaning away, front arm high, bowling 
     "legR": (0.05, 0, 0), "shinR": (0.3, 0, 0), "legL": (-1.0, 0, 0), "shinL": (0.7, 0, 0),
     "armL": (-2.8, 0, 0.1), "foreL": (-0.15, 0, 0), "armR": (0.9, 0, -0.1), "foreR": (-0.15, 0, 0),
 }
-PLANT = {  # front foot down and braced, front arm pulling in, bowling arm coming up behind
-    "hips": (0, -0.1, 0), "torso": (0.05, -0.15, -0.08), "head": (-0.1, 0.2, 0),
-    "legL": (-0.55, 0, 0.05), "shinL": (0.05, 0, 0), "legR": (0.3, 0, 0), "shinR": (0.7, 0, 0),
+# The front foot lands at plant_time on FRONT_FOOT (its ankle, from the root, and its turn)
+# and stays there, flat, through the release and the follow-through. The page stands the
+# figure so the release bone is on the ball's first point, so where the foot is relative
+# to the hand decides the no-ball: the toe is FOOT_BEHIND (page metres) behind the hand.
+# Over the wicket, the hand is over the front foot's lane and the body to its left (+X).
+PAGE_RELEASE_HEIGHT = 2.08  # the ball's first point above the ground, which bowler.js scales the hand to
+FOOT_BEHIND, FOOT_BEHIND_RANGE = 0.17, (0.12, 0.22)
+FRONT_FOOT = (-0.2, 0.2, 0.0)
+PLANT = planted({  # front foot down, front arm pulling in, bowling arm coming up behind
+    "hips": (0, -0.1, 0), "torso": (0.15, -0.15, -0.08), "head": (-0.15, 0.2, 0),
+    "legL": (-0.4, 0, -0.25), "shinL": (0.25, 0, 0), "legR": (0.3, 0, 0), "shinR": (0.7, 0, 0),
     "armL": (-1.2, 0, 0.2), "foreL": (-1.0, 0, 0), "armR": (2.2, 0, 0.1), "foreR": (-0.05, 0, 0),
-}
-RELEASE = {  # front leg braced, bowling arm over the top
-    "torso": (0.16, 0.2, -0.14), "head": (-0.15, -0.15, 0),
-    "legL": (-0.5, 0, 0.05), "shinL": (0.05, 0, 0), "legR": (0.4, 0, 0), "shinR": (0.9, 0, 0),
-    "armR": (2 * pi - 3.05, 0, 0.1), "foreR": (-0.03, 0, 0), "armL": (0.55, 0, 0.3), "foreL": (-1.3, 0, 0),
-}
-FOLLOW = {  # the arm finishes across the body, the back leg swings through
+}, FRONT_FOOT)
+RELEASE = bowling_arm(planted({  # front leg braced, trunk over it and tilted away from the arm, arm straight beside the head
+    "torso": (0.38, 0.2, -0.1), "head": (-0.3, -0.15, 0.05),
+    "legL": (-0.22, 0, -0.3), "shinL": (0.03, 0, 0), "legR": (0.5, 0, 0), "shinR": (0.9, 0, 0),
+    "armL": (0.55, 0, 0.3), "foreL": (-1.3, 0, 0),
+}, FRONT_FOOT), FOOT_BEHIND, 2 * pi - 3.05)
+FOLLOW = planted({  # the arm finishes across the body, the back leg swings through, the front foot still down
     "hips": (0, 0.3, 0), "torso": (0.85, 0.5, 0), "head": (-0.6, -0.3, 0),
-    "legR": (-0.9, 0, 0), "shinR": (1.0, 0, 0), "legL": (0.1, 0, 0), "shinL": (0.15, 0, 0),
+    "legR": (-0.9, 0, 0), "shinR": (1.0, 0, 0), "legL": (-0.1, 0, -0.2), "shinL": (0.15, 0, 0),
     "armR": (5.2, 0, -0.3), "foreR": (-0.3, 0, 0), "armL": (1.0, 0, 0.2), "foreL": (-0.8, 0, 0),
-}
+}, FRONT_FOOT)
 RECOVER = {
     "torso": (0.4, 0.1, 0), "head": (-0.3, 0, 0),
     "legR": (-0.3, 0, 0), "shinR": (0.4, 0, 0), "legL": (0.5, 0, 0), "shinL": (1.0, 0, 0),
@@ -704,9 +779,35 @@ def build_bowler():
     """A right-arm fast bowler with RunUp_Stride, Bound_And_Deliver and
     Appeal_Celebrate, and a bone called `release` in the bowling hand."""
     rig, _, rest = build_figure("bowler", _look("bowler", hat="none"), RUN, ["release"])
+    behind, height, lane = delivery_checks()
     _bake_all(rig, BOWLER_CLIPS, rest)
     rig["release_time"] = RELEASE_TIME
     rig["plant_time"] = PLANT_TIME
+    rig["front_foot_behind_release"] = round(behind, 3)
+    rig["release_height"] = round(height, 3)
+    print(f"bowler: toe {behind:.3f} m behind the hand at the page's scale {page_scale(height):.3f}, "
+          f"hand {height:.3f} m up and {lane:.3f} m to the right of the body's centre line")
+
+
+def delivery_checks():
+    """Asserts the front foot lands flat at plant_time and stays put to the release, with
+    its toe FOOT_BEHIND behind the hand. Returns that distance (page metres), the release
+    bone's height, and how far the hand is to the right of the hips (rig X)."""
+    keys = BOWLER_CLIPS["Bound_And_Deliver"][0]
+    at_release = solve(sample(keys, RELEASE_TIME, False))
+    hand = at_release["release"].translation
+    behind = (hand.z - sole(at_release)[1].z) * page_scale(hand.y)
+    low, high = FOOT_BEHIND_RANGE
+    assert low <= behind <= high, f"the front toe is {behind:.3f} m behind the hand at release, not {low} to {high}"
+    landed = sole(solve(sample(keys, PLANT_TIME, False)))
+    times = [PLANT_TIME + (RELEASE_TIME - PLANT_TIME) * i / 20 for i in range(21)]
+    times += [i / FPS for i in range(round(PLANT_TIME * FPS), round(RELEASE_TIME * FPS) + 1) if PLANT_TIME <= i / FPS <= RELEASE_TIME]
+    for t in times:
+        points = sole(solve(sample(keys, t, False)))
+        assert all(abs(p.y) <= 0.01 for p in points), f"the front sole is off the ground at {t:.3f} s"
+        moved = max((p - q).length for p, q in zip(points, landed))
+        assert moved <= 0.01, f"the front foot has moved {moved * 100:.1f} cm by {t:.3f} s"
+    return behind, hand.y, at_release["hips"].translation.x - hand.x
 
 
 def build_slip():

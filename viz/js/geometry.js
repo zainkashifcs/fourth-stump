@@ -21,6 +21,16 @@ export function batterRootX(action, ballX, { batLine = 0.7, bodyEdge = 0.25, bod
   return hits ? ballX - ballRadius - bodyEdge : STANCE_X;
 }
 
+export const POPPING_CREASE = 1.22; // in front of each set of stumps (Laws of Cricket)
+
+// Law 21.5 asks for some part of the front foot behind the popping crease; the bowler here is held
+// to the stricter reading, the toe. toeY: the toe along the pitch (data y); stumpsY: the bowler's
+// stumps. behind: metres the toe is short of the line (negative over it).
+export function frontFoot(toeY, { stumpsY, crease = POPPING_CREASE }) {
+  const behind = toeY - (stumpsY - crease);
+  return { legal: behind >= -1e-9, behind };
+}
+
 const GRAVITY = 9.81;
 const PACE_PAST_STUMPS = 30; // m/s along the pitch: a seam bowler's delivery after the bounce
 

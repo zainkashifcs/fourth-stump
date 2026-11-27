@@ -1,0 +1,94 @@
+{
+  "voice": "Kokoro-82M bm_george",
+  "format": "audio/mpeg",
+  "lines": {
+    "bowled": [
+      {
+        "file": "bowled-1.mp3",
+        "text": "BOWLED HIM!",
+        "seconds": 0.798,
+        "bytes": 5184
+      },
+      {
+        "file": "bowled-2.mp3",
+        "text": "Right through the gate, off stump out of the ground, timber everywhere!",
+        "seconds": 3.941,
+        "bytes": 24048
+      }
+    ],
+    "bowled-yorker": [
+      {
+        "file": "bowled-yorker-1.mp3",
+        "text": "IN THE BLOCKHOLE, CLEAN BOWLED!",
+        "seconds": 1.878,
+        "bytes": 11664
+      },
+      {
+        "file": "bowled-yorker-2.mp3",
+        "text": "Toe-crushing yorker right on the fourth-stump line!",
+        "seconds": 3.33,
+        "bytes": 20304
+      }
+    ],
+    "edged-caught": [
+      {
+        "file": "edged-caught-1.mp3",
+        "text": "EDGED AND GONE!",
+        "seconds": 1.205,
+        "bytes": 7632
+      },
+      {
+        "file": "edged-caught-2.mp3",
+        "text": "Thin feather outside off, swallowed cleanly in the slips!",
+        "seconds": 3.476,
+        "bytes": 21168
+      }
+    ],
+    "edged-short": [
+      {
+        "file": "edged-short-1.mp3",
+        "text": "Ooh, thick outside edge, drops agonizingly short of second slip!",
+        "seconds": 4.238,
+        "bytes": 25776
+      }
+    ],
+    "left-alone": [
+      {
+        "file": "left-alone-1.mp3",
+        "text": "Shouldered arms, judged to perfection on the fourth-stump line, watches it carry through.",
+        "seconds": 5.563,
+        "bytes": 33696
+      }
+    ],
+    "left-alone-bouncer": [
+      {
+        "file": "left-alone-bouncer-1.mp3",
+        "text": "Sways out of the road, sharp bumper in the corridor, well left alone.",
+        "seconds": 4.386,
+        "bytes": 26640
+      }
+    ],
+    "middled": [
+      {
+        "file": "middled-1.mp3",
+        "text": "Right behind the line, crisp, authoritative forward defensive into the covers.",
+        "seconds": 5.147,
+        "bytes": 31248
+      }
+    ],
+    "play-and-miss": [
+      {
+        "file": "play-and-miss-1.mp3",
+        "text": "BEATEN!",
+        "seconds": 0.724,
+        "bytes": 4752
+      },
+      {
+        "file": "play-and-miss-2.mp3",
+        "text": "Lovely shape away off the seam, squared him up, past the outside edge.",
+        "seconds": 4.349,
+        "bytes": 26496
+      }
+    ]
+  }
+}

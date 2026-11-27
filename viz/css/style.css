@@ -91,6 +91,8 @@ main { max-width: 1560px; margin: 0 auto; }
 .segmented label:hover { border-color: var(--cyan); }
 .segmented input:checked + label { background: var(--cyan); border-color: var(--cyan); color: var(--black); }
 .segmented input:focus-visible + label { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.segmented input:disabled + label, .button:disabled { opacity: 0.45; cursor: not-allowed; }
+.button:disabled:hover { background: var(--black); color: var(--yellow); }
 .mode-switch label { padding: 4px 14px; }
 .mode-switch input:checked + label { background: var(--yellow); border-color: var(--yellow); }
 .link { padding: 0; border: 0; background: none; color: var(--dim); font: inherit; text-decoration: underline; cursor: pointer; }
@@ -188,6 +190,8 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
   background: var(--black); color: var(--ink); font-size: 1.1rem; line-height: 1.2;
   animation: strap-on 0.3s steps(6) both;
 }
+.cap-call { color: var(--yellow); }
+.cap-clause { animation: boot-line 0.18s steps(2) both; } /* the second beat types on when it is spoken */
 .cap-flash {
   position: absolute; left: 0; right: 0; top: 13%; padding: 0 0 4px;
   background: var(--red); color: var(--yellow); text-align: center; text-transform: uppercase;
@@ -280,8 +284,32 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
 .summary-table .is-wrong td:nth-child(3) { color: var(--red); }
 .summary .button { justify-self: start; }
 
+/* Live engine: controls, the picture, then the numbers and the stumps plot */
+.live {
+  --live-height: clamp(340px, calc(100vh - 170px), 720px);
+  display: grid; grid-template-columns: minmax(250px, 290px) minmax(0, 1.55fr) minmax(300px, 1fr); gap: 16px;
+}
+.live-controls { display: grid; align-content: start; gap: 8px; padding: 10px 14px; background: var(--panel); border: 2px solid var(--line); }
+.live-controls .segmented-options { display: flex; flex-wrap: wrap; }
+.live-controls .segmented label { flex: 1 1 auto; padding: 2px 8px; }
+.live-field input { display: block; width: 100%; margin: 0; accent-color: var(--yellow); }
+.live-field input:disabled { cursor: not-allowed; }
+.live-ends { display: flex; justify-content: space-between; font-size: 1rem; color: var(--dim); }
+.live-note { font-size: 1.1rem; line-height: 1.25; }
+.live-bowl-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.live-status { padding-top: 8px; border-top: 1px solid var(--line); color: var(--ink); font-size: 1.1rem; line-height: 1.25; }
+.live-picture { display: grid; align-content: start; }
+.live-stage { position: relative; height: var(--live-height); }
+.live-side { display: flex; flex-direction: column; min-width: 0; }
+.live-side .card { margin-bottom: 12px; }
+/* a zero basis: the plot fills what the picture's height leaves, not its own drawing's height */
+.live .endon-frame { flex: 1 1 0; grid-row: auto; min-height: 220px; }
+
 /* Medium: venues stay side by side, the end-on chart drops below */
 @media (max-width: 1180px) {
+  .live { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); }
+  .live-side { grid-column: 1 / -1; }
+  .live .endon-frame { flex: 0 0 auto; height: 360px; }
   .compare-grid { grid-template-columns: repeat(var(--venues), minmax(0, 1fr)); grid-template-rows: auto auto auto auto; }
   .stumps-panel { grid-column: 1 / -1; grid-row: auto; margin-top: 18px; display: block; }
   .endon-frame { height: calc(var(--view-height) * 1.2); }
@@ -296,7 +324,11 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
   .venue { display: block; margin-bottom: 20px; }
   .game { grid-template-columns: minmax(0, 1fr); }
   .game-stage { height: 340px; }
-  .masthead { grid-template-columns: 1fr; }
+  .live { grid-template-columns: minmax(0, 1fr); }
+  .live-stage { height: 320px; }
+  .live .endon-frame { height: 300px; }
+  .masthead { grid-template-columns: minmax(0, 1fr); }
+  .mode-switch .segmented-options { flex-wrap: wrap; }
   .title h1 { font-size: 2.4rem; }
 }
 

@@ -3,11 +3,12 @@
 // data coordinates and converted by coords.js.
 import * as THREE from 'three';
 import { toScene } from './coords.js';
+import { POPPING_CREASE } from './geometry.js';
 import { flat as flatMaterial } from './models/materials.js';
 
 // Laws of Cricket dimensions that the data file does not carry (metres).
 const LAWS = {
-  poppingCrease: 1.22, // in front of the stumps
+  poppingCrease: POPPING_CREASE, // in front of the stumps
   pitchWidth: 3.05,
   returnCreaseX: 1.32,
   returnCreaseLength: 2.44,

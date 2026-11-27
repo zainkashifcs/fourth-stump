@@ -1,4 +1,4 @@
-// Boot: load the data and the models, build the stage and the two views,
+// Boot: load the data and the models, build the stage and the three views,
 // switch between them. The boot overlay follows the same promises.
 import { h, segmented } from './dom.js';
 import { fetchData, validate, venueKeys } from './data.js';
@@ -9,6 +9,7 @@ import { createGame } from './game.js';
 import { createBoot } from './boot.js';
 import { createAudio } from './audio.js';
 import { createAbout } from './about.js';
+import { createLive } from './live.js';
 
 const main = document.querySelector('#app');
 const tools = document.querySelector('#tools');
@@ -55,7 +56,8 @@ const boot = createBoot({
   ],
 });
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-if (!new URLSearchParams(window.location.search).has('noboot') && !reducedMotion) boot.show();
+const params = new URLSearchParams(window.location.search);
+if (!params.has('noboot') && !reducedMotion) boot.show();
 
 async function start() {
   const data = await validated;
@@ -63,7 +65,19 @@ async function start() {
   const { meta } = data;
   const about = createAbout(meta);
   const stage = createStage(meta.constants, keys, await modelled, { onSound: audio.play });
-  const modes = { compare: createCompare(data, stage), game: createGame(data, stage) };
+  const modes = {
+    compare: createCompare(data, stage),
+    game: createGame(data, stage),
+    // the WebAssembly module and its settings load only when this view is first opened
+    live: createLive(data, stage, {
+      nowasm: params.has('nowasm'),
+      loadEngine: () => import('./engine-wasm.js').then((module) => module.loadEngine()),
+      loadLive: () => fetch('./data/live.json').then((response) => {
+        if (!response.ok) throw new Error(`data/live.json returned HTTP ${response.status}`);
+        return response.json();
+      }),
+    }),
+  };
   let current = null;
 
   function setMode(name) {
@@ -77,13 +91,15 @@ async function start() {
   }
 
   Object.values(modes).forEach((mode) => { mode.el.hidden = true; });
-  main.replaceChildren(modes.compare.el, modes.game.el);
+  main.replaceChildren(modes.compare.el, modes.game.el, modes.live.el);
   tools.replaceChildren(
     segmented({
       legend: 'View',
       hideLegend: true,
       className: 'mode-switch',
-      options: [{ value: 'compare', label: 'Compare venues' }, { value: 'game', label: 'Test your eye' }],
+      options: [
+        { value: 'compare', label: 'Compare venues' }, { value: 'game', label: 'Test your eye' }, { value: 'live', label: 'Live engine' },
+      ],
       value: 'compare',
       onChange: setMode,
     }).el,

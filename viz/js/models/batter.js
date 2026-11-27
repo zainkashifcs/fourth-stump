@@ -18,7 +18,7 @@ export function buildBatter(gltf, constants) {
   group.position.copy(home);
   group.rotation.y = Math.PI / 2; // chest to the off side, left shoulder to the bowler: rig +Z is data +x
 
-  const rig = gltf && createRig(gltf, [IDLE]);
+  const rig = gltf && createRig(gltf, [IDLE], { snap: true });
   if (!rig?.has(IDLE)) {
     group.add(placeholderFigure(), placeholderBat(constants.bat_half_width));
     return { group, pose() {}, clips: [] };

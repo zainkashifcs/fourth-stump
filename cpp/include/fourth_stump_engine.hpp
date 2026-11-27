@@ -568,9 +568,11 @@ inline void draw_block(std::uint64_t seed, std::uint64_t first, std::size_t coun
 // Preconditions, not checked here (the Python binding checks them): every release starts
 // above the pitch (z > kBallRadius) and travels down it (vy < 0) faster than any tailwind.
 // A second bounce is not modelled.
+// `first_index` numbers the batch's deliveries from there, so a batch split into pieces at
+// any boundaries gives the same bits as one call (ADR-016).
 template <typename Policy = XoshiroZiggurat>
 inline void simulate_batch(const ReleaseBatch& in, const Conditions& c, std::uint64_t seed,
-                           OutcomeBatch& out) noexcept {
+                           OutcomeBatch& out, std::uint64_t first_index = 0) noexcept {
     Policy::prepare();
     const Pitch pitch = pitch_of(c);
     const std::size_t n = in.size();
@@ -581,7 +583,7 @@ inline void simulate_batch(const ReleaseBatch& in, const Conditions& c, std::uin
     for (std::ptrdiff_t k = 0; k < blocks; ++k) {
         const std::size_t first = static_cast<std::size_t>(k) * kDrawBlock, count = std::min(kDrawBlock, n - first);
         DrawBlock d;  // on this thread's stack
-        draw_block<Policy>(seed, first, count, c, d);
+        draw_block<Policy>(seed, first_index + first, count, c, d);
         for (std::size_t j = 0; j < count; ++j) {
             const std::size_t i = first + j;
             const DeliveryResult r = simulate_delivery({in.x[i], in.z[i], in.vx[i], in.vy[i], in.vz[i]}, d.cs[j],
@@ -665,6 +667,28 @@ inline Release aim(double x, double z, double speed, double bounce_x, double bou
         tz = (kBallRadius - z + kGravity * (e2 - 1.0 - 2.0 * kDragK * d) / (4.0 * kDragK * kDragK * u * u)) / d;
     }
     return {x, z, tx * u, -u, tz * u};
+}
+
+// Named lengths for a delivery, as the bounce distance from the batter's stumps that `aim`
+// takes. The fourth-stump yorker is aimed to land just behind the stumps, so it reaches the bat
+// on the full; the envelope's lengths run from -1 m to 10 m (fourth_stump_envelope.hpp).
+enum class DeliveryLength : std::uint8_t { GoodLength = 0, FourthStumpYorker = 1, FourthStumpBouncer = 2 };
+inline constexpr double length_of(DeliveryLength l) noexcept {
+    switch (l) {
+        case DeliveryLength::FourthStumpYorker: return -0.40;  // 19.3 m from a release at 18.90 m
+        case DeliveryLength::FourthStumpBouncer: return 8.65;  // 10.25 m from it
+        default: return 6.5;                                    // 12.4 m: the showcase delivery's length
+    }
+}
+
+struct BouncePoint {
+    double x, y;
+};
+// Where to aim a delivery of length l released at release_x so that, without swing or wind, it
+// would pass the plane of the stumps at x = line.
+inline BouncePoint bounce_target(DeliveryLength l, double release_x, double line, const Conditions& c) noexcept {
+    const double y = length_of(l);
+    return {line + (release_x - line) * y / c.release_y, y};
 }
 
 // A population of releases: speed, length (bounce distance from the batter's stumps)

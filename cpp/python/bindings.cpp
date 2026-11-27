@@ -236,6 +236,15 @@ PYBIND11_MODULE(_engine, m) {
         const Release r = aim(x, z, speed, bounce_x, bounce_y, c);
         return std::array<double, 5>{r.x, r.z, r.vx, r.vy, r.vz};
     });
+    py::enum_<DeliveryLength>(m, "DeliveryLength", "Named lengths; length_of gives each one's bounce distance from the stumps")
+        .value("GoodLength", DeliveryLength::GoodLength)
+        .value("FourthStumpYorker", DeliveryLength::FourthStumpYorker)
+        .value("FourthStumpBouncer", DeliveryLength::FourthStumpBouncer);
+    m.def("length_of", [](DeliveryLength l) { return length_of(l); }, py::arg("length"));
+    m.def("bounce_target", [](DeliveryLength l, double release_x, double line, const Conditions& c) {
+        const BouncePoint b = bounce_target(l, release_x, line, c);
+        return py::make_tuple(b.x, b.y);
+    }, py::arg("length"), py::arg("release_x"), py::arg("line"), py::arg("conditions"));
     m.def("trace", &trace, py::arg("release"), py::arg("cs"), py::arg("seam_deviation"), py::arg("conditions"),
           py::arg("points") = 48);
     m.def("reference_arrival", &reference_arrival, py::arg("release"), py::arg("cs"), py::arg("seam_deviation"),

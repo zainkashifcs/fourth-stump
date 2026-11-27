@@ -509,3 +509,74 @@ TEST_CASE("a batch's summary is identical on 1, 4 and 16 threads") {
     CHECK(one.n == n);
     CHECK_FALSE(same(one, Run(n, 12).summary()));
 }
+
+TEMPLATE_TEST_CASE("a batch split into pieces at any boundaries gives the same bits as one call", "", XoshiroZiggurat,
+                   PhiloxBoxMuller) {
+    const std::size_t n = 1'000;
+    const Run<TestType> whole(n, 21);
+    BatchStorage pieces(n);
+    pieces.sample(ReleaseSpec{}, Conditions{}, 99);
+    const ReleaseBatch in = pieces.releases();
+    OutcomeBatch out = pieces.outcomes();
+    for (const auto [first, count] : {std::pair<std::size_t, std::size_t>{0, 37}, {37, 463}, {500, 1}, {501, 499}}) {
+        const auto cut = [&](auto s) { return s.subspan(first, count); };
+        const ReleaseBatch part{cut(in.x), cut(in.z), cut(in.vx), cut(in.vy), cut(in.vz)};
+        OutcomeBatch o{cut(out.bat_x), cut(out.bat_z), cut(out.stumps_x), cut(out.stumps_z), cut(out.expected_x),
+                       cut(out.bounce_x), cut(out.bounce_y), cut(out.leave), cut(out.play)};
+        simulate_batch<TestType>(part, Conditions{}, 21, o, first);
+    }
+    const auto eq = [](auto x, auto y) { return std::memcmp(x.data(), y.data(), x.size_bytes()) == 0; };
+    CHECK(eq(whole.batch.bat_x.span(), pieces.bat_x.span()));
+    CHECK(eq(whole.batch.stumps_x.span(), pieces.stumps_x.span()));
+    CHECK(eq(whole.batch.stumps_z.span(), pieces.stumps_z.span()));
+    CHECK(eq(whole.batch.expected_x.span(), pieces.expected_x.span()));
+    CHECK(eq(whole.batch.bounce_y.span(), pieces.bounce_y.span()));
+    CHECK(eq(whole.batch.leave.span(), pieces.leave.span()));
+    CHECK(eq(whole.batch.play.span(), pieces.play.span()));
+}
+
+// ---- Named lengths ----------------------------------------------------------------------------
+
+TEST_CASE("the named lengths are inside the envelope, and good length is the showcase delivery's") {
+    for (const DeliveryLength l :
+         {DeliveryLength::GoodLength, DeliveryLength::FourthStumpYorker, DeliveryLength::FourthStumpBouncer}) {
+        CHECK(length_of(l) >= envelope::kMinLength);
+        CHECK(length_of(l) <= envelope::kMaxLength);
+    }
+    CHECK(length_of(DeliveryLength::GoodLength) == kGoodLength);  // the baseline does not move
+    const BouncePoint b = bounce_target(DeliveryLength::GoodLength, 0.75, 0.0, Conditions{});
+    CHECK(b.x == 0.0 + (0.75 - 0.0) * kGoodLength / Conditions{}.release_y);
+    CHECK(b.y == kGoodLength);
+}
+
+// Aimed as the showcase is (no swing, no wind), then flown under any swing in the envelope and
+// along-pitch wind: where each named length's mean delivery bounces, as distance from release.
+TEST_CASE("each named length's mean delivery bounces in its band; the yorker reaches the stumps on the full") {
+    using namespace envelope;
+    Conditions neutral = quiet();
+    neutral.cs_mean = 0.0;
+    for (double speed : {kMinSpeed, 0.5 * (kMinSpeed + kMaxSpeed), kMaxSpeed})
+    for (double release_x : {0.75, -0.75})
+    for (double cs : {-kMaxSwing, 0.0, kMaxSwing})
+    for (double wind_y : {-3.0, 0.0, 3.0}) {
+        Conditions c = quiet();
+        c.cs_mean = cs;
+        c.wind_y = wind_y;
+        const auto fly = [&](DeliveryLength l) {
+            const BouncePoint b = bounce_target(l, release_x, 0.0, neutral);
+            return make_flight(release_state(aim(release_x, 2.08, speed, b.x, b.y, neutral)), cs, 0.0, c, pitch_of(c));
+        };
+        INFO("speed " << speed << ", release x " << release_x << ", swing " << cs << ", wind along " << wind_y);
+        const Flight good = fly(DeliveryLength::GoodLength), bouncer = fly(DeliveryLength::FourthStumpBouncer),
+                     yorker = fly(DeliveryLength::FourthStumpYorker);
+        REQUIRE(good.bounced);
+        CHECK(good.bounce_s == Approx(c.release_y - kGoodLength).margin(0.35));  // 12.4 m, short of 13.5 to 15
+        REQUIRE(bouncer.bounced);
+        CHECK(bouncer.bounce_s >= 9.5);
+        CHECK(bouncer.bounce_s <= 11.0);
+        CHECK_FALSE(yorker.bounced);
+        const State at_bat = yorker.at(c.release_y - kBatPlaneY), at_stumps = yorker.at(c.release_y);
+        CHECK(at_bat.z < 0.45);  // below the knee at the popping crease
+        CHECK(at_stumps.z < 0.2);  // the bottom of the stumps
+    }
+}

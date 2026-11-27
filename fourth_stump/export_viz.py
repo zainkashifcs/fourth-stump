@@ -1,31 +1,40 @@
-"""Precompute everything the visualisation shows (ADR-013) and write viz/data/trajectories.json.
+"""Precompute everything the visualisation shows (ADR-013) and write viz/data/trajectories.json,
+plus viz/data/live.json, the inputs of the page's live WebAssembly engine (ADR-016).
 
 Run with `make viz-data`. The file's schema is documented in viz/data/SCHEMA.md and is
 the only contract between the engine and the visualisation.
 """
 import json
+import math
 from datetime import date
 from pathlib import Path
 
 import numpy as np
 
-from . import (ARMS, CONSTANTS, LEAVE_OUTCOMES, VENUES, Conditions, aim, catch_conversion_for, conditions_for,
-               release_spec_for, simulate, summarize, trace)
+from . import (ARMS, CONSTANTS, LEAVE_OUTCOMES, VENUES, Conditions, DeliveryLength, aim, catch_conversion_for,
+               conditions_for, length_of, simulate, summarize, trace)
 from .venues import DATA, expected_values
 
 OUT = Path(__file__).resolve().parents[1] / "viz" / "data" / "trajectories.json"
+LIVE = OUT.with_name("live.json")
 BALL_AGES = (1, 10, 20, 30, 40, 50, 60, 70, 80)
 # 135 km/h, good length, aimed at middle stump: swing and wind then carry it towards the fourth-stump corridor.
-SPEED, LENGTH, LINE = 37.5, 6.5, 0.0
+SPEED, LENGTH, LINE = 37.5, length_of(DeliveryLength.GoodLength), 0.0
+# The showcase release: right-arm over, wide on the crease; a left-armer's is its mirror. The calibration
+# population keeps its own release (venues.release_spec_for).
+SHOWCASE_X, SHOWCASE_Z = 0.75, 2.08
+LENGTHS = {"good": DeliveryLength.GoodLength, "yorker": DeliveryLength.FourthStumpYorker,
+           "bouncer": DeliveryLength.FourthStumpBouncer}
 BATCH, FAN, GAMES, SEED = 200_000, 10, 60, 2026
 DEFAULT_WICKET_COST, DEFAULT_RUNS_MIDDLED, WICKETS_LOST = 30.0, 0.5, 3
+LIVE_BALL_AGE, LIVE_END = 1, 0  # the case live.json's venue conditions describe
 
 
-def wicket_cost(ball_age: int) -> tuple[float, str]:
+def wicket_cost(ball_age: int, wickets_lost: int = WICKETS_LOST) -> tuple[float, str]:
     """Wicket cost at this ball age from the run-expectancy table, if it has been built."""
     table = DATA / "run_expectancy.json"
     if table.exists():
-        return json.loads(table.read_text(encoding="utf-8"))["wicket_cost"][WICKETS_LOST][ball_age - 1], "run-expectancy table"
+        return json.loads(table.read_text(encoding="utf-8"))["wicket_cost"][wickets_lost][ball_age - 1], "run-expectancy table"
     return DEFAULT_WICKET_COST, "placeholder"
 
 
@@ -40,8 +49,12 @@ def release_for(arm: str, line: float = LINE, length: float = LENGTH, speed: flo
     """The same release at every venue: aimed with no swing and no wind."""
     neutral = Conditions()
     neutral.cs_mean = 0.0
-    x = release_spec_for(arm).x
-    return aim(x, 2.10, speed, line + (x - line) * length / neutral.release_y, length, neutral)
+    x = showcase_x(arm)
+    return aim(x, SHOWCASE_Z, speed, line + (x - line) * length / neutral.release_y, length, neutral)
+
+
+def showcase_x(arm: str) -> float:
+    return SHOWCASE_X if arm == "right" else -SHOWCASE_X
 
 
 def path_of(t: dict) -> list[list[float]]:
@@ -133,6 +146,35 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(document, separators=(",", ":")), encoding="utf-8")
     print(f"wrote {OUT} ({OUT.stat().st_size / 1024:.0f} kB, {len(scenarios)} scenarios, {len(games)} game deliveries)")
+    LIVE.write_text(json.dumps(live_inputs(), separators=(",", ":")), encoding="utf-8")
+    print(f"wrote {LIVE}")
+
+
+def live_inputs() -> dict:
+    """What the page's live WebAssembly engine needs besides the visitor's settings (ADR-016)."""
+    neutral = Conditions()
+    neutral.cs_mean = 0.0
+
+    def release(arm: str) -> dict:  # as release_for, without speed and length: the engine aims it at the chosen ones
+        return {"x": showcase_x(arm), "z": SHOWCASE_Z, "line": LINE}
+
+    def venue(key: str) -> dict:
+        right, left = (conditions_for(key, LIVE_BALL_AGE, LIVE_END, arm) for arm in ARMS)
+        fields = ("sigma_swing", "sigma_seam", "e_z", "sigma_ez", "pace_retention", "tilt", "wind_y", "release_y", "reaction_time")
+        return {"name": VENUES[key]["name"], "conditions": {f: getattr(right, f) for f in fields},
+                "swing": {"right": right.cs_mean, "left": left.cs_mean}, "crosswind": right.wind_x,
+                # The envelope bounds wind speed, so wind along the pitch narrows the crosswind allowed.
+                "max_crosswind": math.sqrt(CONSTANTS["max_wind"] ** 2 - right.wind_y ** 2),
+                "catch_conversion": catch_conversion_for(key), "runs_middled": runs_middled()}
+
+    costs = [wicket_cost(LIVE_BALL_AGE, w) for w in range(10)]
+    return {"meta": {"generated": date.today().isoformat(), "ball_age": LIVE_BALL_AGE, "bowling_end": LIVE_END,
+                     "wicket_cost_source": costs[0][1]},
+            "release": {arm: release(arm) for arm in ARMS},
+            "lengths": {name: {"bounce_y": length_of(l), "from_release": neutral.release_y - length_of(l)}
+                        for name, l in LENGTHS.items()},
+            "venues": {key: venue(key) for key in VENUES},
+            "wicket_cost": {"ball_age": LIVE_BALL_AGE, "by_wickets_lost": [c for c, _ in costs]}}
 
 
 if __name__ == "__main__":

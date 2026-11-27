@@ -136,3 +136,12 @@ def test_an_impossible_release_is_rejected_at_the_binding(release, message):
 def test_the_thread_count_does_not_leak_between_calls():
     run_batch(threads=1)
     assert run_batch(threads=0)["bat_x"].tobytes() == run_batch(threads=16)["bat_x"].tobytes()
+
+
+def test_the_named_lengths_reach_python_inside_the_envelope():
+    lengths = {name: fs.length_of(l) for name, l in fs.DeliveryLength.__members__.items()}
+    assert lengths == {"GoodLength": 6.5, "FourthStumpYorker": -0.4, "FourthStumpBouncer": 8.65}
+    assert all(K["min_length"] <= v <= K["max_length"] for v in lengths.values())
+    c = fs.Conditions()
+    x, y = fs.bounce_target(fs.DeliveryLength.FourthStumpBouncer, 0.75, 0.0, c)
+    assert (x, y) == (0.75 * 8.65 / c.release_y, 8.65)

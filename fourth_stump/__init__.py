@@ -3,6 +3,7 @@ from ._engine import (
     CONSTANTS,
     LEAVE_OUTCOMES,
     PLAY_OUTCOMES,
+    Batch,
     Conditions,
     ReleaseSpec,
     aim,
@@ -14,6 +15,6 @@ from ._engine import (
 from .venues import ARMS, VENUES, catch_conversion_for, conditions_for, expected_values, release_spec_for, summarize
 
 __all__ = [
-    "ARMS", "CONSTANTS", "catch_conversion_for", "LEAVE_OUTCOMES", "PLAY_OUTCOMES", "VENUES", "Conditions", "ReleaseSpec", "aim",
+    "ARMS", "CONSTANTS", "catch_conversion_for", "LEAVE_OUTCOMES", "PLAY_OUTCOMES", "VENUES", "Batch", "Conditions", "ReleaseSpec", "aim",
     "conditions_for", "expected_values", "reference_arrival", "release_spec_for", "sample_releases", "simulate", "summarize", "trace",
 ]

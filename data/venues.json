@@ -1,0 +1,39 @@
+{
+  "_comment": "Venue priors. sigma_swing, sigma_seam and e_z are overridden by data/calibrated.json when it exists. Swing strength, its half-life and the wind are stated assumptions, not fitted (ADR-009, ADR-010). End 0 is listed first; bowling from end 1 reverses the wind and the slope.",
+  "lords": {
+    "name": "Lord's, London",
+    "ball": "Dukes",
+    "ends": ["Pavilion End", "Nursery End"],
+    "cs0": 0.14,
+    "swing_half_life_overs": 40,
+    "sigma_swing": 0.05,
+    "sigma_seam": 0.008,
+    "e_z": 0.52,
+    "tilt_deg": -1.09,
+    "wind": [1.0, 0.0]
+  },
+  "perth": {
+    "name": "Perth Stadium",
+    "ball": "Kookaburra",
+    "ends": ["Members End", "Langer Stand End"],
+    "cs0": 0.12,
+    "swing_half_life_overs": 12,
+    "sigma_swing": 0.04,
+    "sigma_seam": 0.007,
+    "e_z": 0.62,
+    "tilt_deg": 0.0,
+    "wind": [3.0, 0.0]
+  },
+  "newlands": {
+    "name": "Newlands, Cape Town",
+    "ball": "Kookaburra",
+    "ends": ["Wynberg End", "Kelvin Grove End"],
+    "cs0": 0.12,
+    "swing_half_life_overs": 12,
+    "sigma_swing": 0.04,
+    "sigma_seam": 0.014,
+    "e_z": 0.56,
+    "tilt_deg": 0.0,
+    "wind": [4.0, 1.0]
+  }
+}

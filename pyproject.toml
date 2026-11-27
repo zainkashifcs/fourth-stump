@@ -1,0 +1,18 @@
+[project]
+name = "fourth-stump-ev"
+version = "0.1.0"
+description = "Expected value of leaving or playing a delivery in the fourth-stump corridor"
+requires-python = ">=3.11"
+dependencies = ["numpy", "scipy", "polars", "pydantic>=2", "httpx"]
+
+[dependency-groups]
+dev = ["pytest", "hypothesis", "pybind11"]
+
+[tool.uv]
+package = false
+# The binding must be compiled against a uv-managed interpreter (ADR-002).
+python-preference = "only-managed"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

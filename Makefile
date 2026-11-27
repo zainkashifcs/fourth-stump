@@ -60,7 +60,7 @@ $(ERRTOOL): cpp/bench/error_bound.cpp $(HEADERS) | $(BUILD)
 
 # Python binding, compiled against the uv-managed interpreter.
 python:
-	$(PY) python/build_binding.py $(CXX) $(CXXFLAGS) $(WERROR)
+	$(PY) cpp/python/build_binding.py $(CXX) $(CXXFLAGS) $(WERROR)
 
 pytest: python
 	uv run pytest -q
@@ -69,4 +69,4 @@ viz-data: python
 	$(PY) -m fourth_stump.export_viz
 
 clean:
-	rm -rf $(BUILD) python/fourth_stump/_engine*
+	rm -rf $(BUILD) fourth_stump/_engine*

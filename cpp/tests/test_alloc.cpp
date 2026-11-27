@@ -46,17 +46,17 @@ void operator delete[](void* p, std::align_val_t) noexcept { counted_free(p); }
 void operator delete(void* p, std::size_t, std::align_val_t) noexcept { counted_free(p); }
 void operator delete[](void* p, std::size_t, std::align_val_t) noexcept { counted_free(p); }
 
-TEST_CASE("simulate_batch makes no heap allocation") {
+TEMPLATE_TEST_CASE("simulate_batch makes no heap allocation", "", fs::XoshiroZiggurat, fs::PhiloxBoxMuller) {
     using namespace fs;
     const Conditions c;
     BatchStorage batch(100'000);
     batch.sample(ReleaseSpec{}, c, 7);
     OutcomeBatch out = batch.outcomes();
-    simulate_batch(batch.releases(), c, 1, out);  // warm up tables and the thread pool
+    simulate_batch<TestType>(batch.releases(), c, 1, out);  // warm up tables and the thread pool
 
     g_allocations = 0;
     g_armed = true;
-    simulate_batch(batch.releases(), c, 2, out);
+    simulate_batch<TestType>(batch.releases(), c, 2, out);
     const Summary s = summarize(batch.leave.span(), batch.play.span());
     g_armed = false;
 

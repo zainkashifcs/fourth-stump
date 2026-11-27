@@ -66,6 +66,93 @@ TEST_CASE("Ziggurat draws are standard normal") {
     CHECK(static_cast<double>(tail) / n == Approx(5.76e-4).epsilon(0.10));  // 2 (1 - Phi(3.4426))
 }
 
+TEST_CASE("Philox4x32-10 reproduces the Random123 known-answer vectors") {
+    // Random123 kat_vectors: counter, key, expected output.
+    STATIC_REQUIRE(philox4x32_10({0, 0, 0, 0}, {0, 0}) == PhiloxCounter{0x6627e8d5, 0xe169c58d, 0xbc57ac4c, 0x9b00dbd8});
+    STATIC_REQUIRE(philox4x32_10({0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff}, {0xffffffff, 0xffffffff}) ==
+                   PhiloxCounter{0x408f276d, 0x41c83b0e, 0xa20bc7c6, 0x6d5451fd});
+    STATIC_REQUIRE(philox4x32_10({0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344}, {0xa4093822, 0x299f31d0}) ==
+                   PhiloxCounter{0xd16cfe09, 0x94fdcceb, 0x5001e420, 0x24126ea1});
+    // The same at run time, through the code path the batch uses.
+    volatile std::uint32_t zero = 0;
+    CHECK(philox4x32_10({zero, 0, 0, 0}, {0, 0}) == PhiloxCounter{0x6627e8d5, 0xe169c58d, 0xbc57ac4c, 0x9b00dbd8});
+}
+
+TEST_CASE("the branchless log and sincos match the standard library over every input the draws use") {
+    // Inputs are unit32(w) for a 32-bit word w. Every 4099th word, plus both ends and the
+    // neighbourhood of every quarter turn and of each power of two the log reduces across.
+    std::vector<std::uint32_t> words;
+    for (std::uint64_t w = 0; w <= 0xFFFFFFFFULL; w += 4099) words.push_back(static_cast<std::uint32_t>(w));
+    for (std::uint32_t d = 0; d < 2'000; ++d) {
+        words.push_back(d);
+        words.push_back(0xFFFFFFFFu - d);
+        for (std::uint32_t q = 1; q < 4; ++q) words.push_back(q * 0x40000000u + d - 1'000);
+        for (int b = 1; b < 32; ++b) words.push_back((1u << b) + d - 1'000);  // unit32 near 2^(b-32)
+    }
+    double worst_log = 0, worst_sin = 0, worst_cos = 0;
+    for (std::uint32_t w : words) {
+        const double u = unit32(w);
+        worst_log = std::max(worst_log, std::abs(log_branchless(u) - std::log(u)) / std::abs(std::log(u)));
+        const SinCos sc = sincos_2pi_unit32(w);
+        worst_sin = std::max(worst_sin, std::abs(sc.sin - std::sin(2.0 * kPi * u)));
+        worst_cos = std::max(worst_cos, std::abs(sc.cos - std::cos(2.0 * kPi * u)));
+    }
+    INFO("worst relative log error " << worst_log << ", worst absolute sin " << worst_sin << ", cos " << worst_cos);
+    CHECK(worst_log <= 0x1.0p-52);  // two units of 2^-53, relative
+    CHECK(worst_sin <= 1e-15);      // absolute; std::sin(2 pi u) itself carries the rounding of 2 pi u
+    CHECK(worst_cos <= 1e-15);
+}
+
+TEST_CASE("Box-Muller normals from Philox are standard normal") {
+    const std::uint64_t n = 2'000'000;  // deliveries, three normals each
+    double m1 = 0, m2 = 0, m3 = 0, m4 = 0, cross = 0;
+    std::uint64_t tail = 0, deep = 0;
+    for (std::uint64_t i = 0; i < n; ++i) {
+        const std::array<double, 3> z = PhiloxBoxMuller::normals(2026, i);
+        cross += z[0] * z[1];
+        for (double x : z) {
+            m1 += x, m2 += x * x, m3 += x * x * x, m4 += x * x * x * x;
+            tail += std::abs(x) > ZigguratTables::kR;
+            deep += std::abs(x) > 4.0;
+        }
+    }
+    const double k = 3.0 * n;
+    m1 /= k, m2 /= k, m3 /= k, m4 /= k;
+    const double var = m2 - m1 * m1;
+    const double skew = (m3 - 3 * m1 * m2 + 2 * m1 * m1 * m1) / std::pow(var, 1.5);
+    const double kurt = (m4 - 4 * m1 * m3 + 6 * m1 * m1 * m2 - 3 * m1 * m1 * m1 * m1) / (var * var) - 3.0;
+    // Bounds are about five standard errors on 6,000,000 draws.
+    CHECK(std::abs(m1) < 0.002);
+    CHECK(var == Approx(1.0).margin(0.003));
+    CHECK(std::abs(skew) < 0.005);
+    CHECK(std::abs(kurt) < 0.01);
+    CHECK(std::abs(cross / n) < 0.004);  // the two normals of a Box-Muller pair are uncorrelated
+    CHECK(static_cast<double>(tail) / k == Approx(5.76e-4).epsilon(0.10));  // 2 (1 - Phi(3.4426))
+    CHECK(static_cast<double>(deep) / k == Approx(6.334e-5).epsilon(0.25));  // 2 (1 - Phi(4))
+}
+
+TEST_CASE("a Philox delivery's draws depend only on seed and delivery index, not on its block") {
+    Conditions c;
+    c.sigma_seam = 0.03;
+    for (std::uint64_t first : {std::uint64_t{0}, std::uint64_t{5}, std::uint64_t{64}, std::uint64_t{1'000'003},
+                                std::uint64_t{0xFFFFFFFFULL} - 7}) {
+        for (std::size_t count : {std::size_t{1}, std::size_t{13}, kDrawBlock}) {
+            DrawBlock b;
+            draw_block<PhiloxBoxMuller>(77, first, count, c, b);  // the vectorised loop
+            for (std::size_t j = 0; j < count; ++j) {
+                const Draws d = PhiloxBoxMuller::draw(77, first + j, c);  // one delivery on its own
+                INFO("delivery " << first + j);
+                REQUIRE(std::memcmp(&d.cs, &b.cs[j], sizeof(double)) == 0);
+                REQUIRE(std::memcmp(&d.seam_deviation, &b.seam_deviation[j], sizeof(double)) == 0);
+                REQUIRE(std::memcmp(&d.e_z, &b.e_z[j], sizeof(double)) == 0);
+            }
+        }
+    }
+    CHECK(PhiloxBoxMuller::draw(77, 3, c).cs != PhiloxBoxMuller::draw(78, 3, c).cs);
+    CHECK(PhiloxBoxMuller::draw(77, 3, c).cs != PhiloxBoxMuller::draw(77, 4, c).cs);
+    CHECK(PhiloxBoxMuller::draw(77, 3, c).cs != PhiloxBoxMuller::draw(77, 3 + (std::uint64_t{1} << 32), c).cs);
+}
+
 // ---- Kernel against the reference trajectory --------------------------------------------
 
 TEST_CASE("the kernel stays inside its published error bound over the whole envelope") {
@@ -249,17 +336,19 @@ TEST_CASE("only movement after the commit point opens a gap") {
 
 namespace {
 
+template <typename Policy = XoshiroZiggurat>
 struct Run {
     BatchStorage batch;
     explicit Run(std::size_t n, std::uint64_t seed, const Conditions& c = Conditions{}) : batch(n) {
         batch.sample(ReleaseSpec{}, c, 99);
         OutcomeBatch out = batch.outcomes();
-        simulate_batch(batch.releases(), c, seed, out);
+        simulate_batch<Policy>(batch.releases(), c, seed, out);
     }
     Summary summary() const { return summarize(batch.leave.span(), batch.play.span()); }
 };
 
-bool same_bits(const Run& a, const Run& b) {
+template <typename Policy>
+bool same_bits(const Run<Policy>& a, const Run<Policy>& b) {
     const auto eq = [](auto x, auto y) { return std::memcmp(x.data(), y.data(), x.size_bytes()) == 0; };
     return eq(a.batch.bat_x.span(), b.batch.bat_x.span()) && eq(a.batch.bat_z.span(), b.batch.bat_z.span()) &&
            eq(a.batch.stumps_x.span(), b.batch.stumps_x.span()) && eq(a.batch.stumps_z.span(), b.batch.stumps_z.span()) &&
@@ -270,23 +359,59 @@ bool same_bits(const Run& a, const Run& b) {
 
 }  // namespace
 
-TEST_CASE("a batch is bit-reproducible across thread counts") {
+TEMPLATE_TEST_CASE("a batch is bit-reproducible across thread counts", "", XoshiroZiggurat, PhiloxBoxMuller) {
     const std::size_t n = 200'000;
 #ifdef _OPENMP
     omp_set_num_threads(1);
-    const Run one(n, 42);
+    const Run<TestType> one(n, 42);
     omp_set_num_threads(4);
-    const Run four(n, 42);
+    const Run<TestType> four(n, 42);
     omp_set_num_threads(16);
-    const Run sixteen(n, 42);
+    const Run<TestType> sixteen(n, 42);
     omp_set_num_threads(omp_get_num_procs());
     CHECK(same_bits(one, four));
     CHECK(same_bits(one, sixteen));
 #else
-    const Run one(n, 42);
+    const Run<TestType> one(n, 42);
 #endif
-    CHECK(same_bits(one, Run(n, 42)));
-    CHECK_FALSE(same_bits(one, Run(n, 43)));
+    CHECK(same_bits(one, Run<TestType>(n, 42)));
+    CHECK_FALSE(same_bits(one, Run<TestType>(n, 43)));
+}
+
+TEMPLATE_TEST_CASE("a delivery's outcome does not depend on the size of its batch", "", XoshiroZiggurat,
+                   PhiloxBoxMuller) {
+    // Sizes that end mid-block and span several blocks; the releases are the same (seed 99) prefix.
+    const Run<TestType> big(1'000, 8), small(37, 8), middle(130, 8);
+    for (const Run<TestType>* r : {&small, &middle}) {
+        const std::size_t n = r->batch.bat_x.span().size();
+        const auto prefix = [n](auto a, auto b) { return std::memcmp(a.data(), b.data(), n * sizeof(a[0])) == 0; };
+        CHECK(prefix(big.batch.bat_x.span(), r->batch.bat_x.span()));
+        CHECK(prefix(big.batch.stumps_z.span(), r->batch.stumps_z.span()));
+        CHECK(prefix(big.batch.expected_x.span(), r->batch.expected_x.span()));
+        CHECK(prefix(big.batch.play.span(), r->batch.play.span()));
+    }
+}
+
+TEST_CASE("the two random-number policies agree on outcome rates within sampling error") {
+    Conditions windy, newlands, perth;
+    windy.wind_x = 4.0, windy.wind_y = 1.0;
+    newlands.sigma_seam = 0.03;
+    perth.e_z = 0.62, perth.sigma_ez = 0.05, perth.cs_mean = 0.05;
+    const std::size_t n = 400'000;
+    for (const Conditions& c : {Conditions{}, windy, newlands, perth}) {
+        const Summary a = Run<XoshiroZiggurat>(n, 3, c).summary(), b = Run<PhiloxBoxMuller>(n, 3, c).summary();
+        const auto agree = [n](double p, double q) {
+            const double m = 0.5 * (p + q);
+            return std::abs(p - q) <= 5.0 * std::sqrt(2.0 * m * (1.0 - m) / static_cast<double>(n)) + 1e-12;
+        };
+        INFO("leave bowled " << a.p_wicket_leave() << " vs " << b.p_wicket_leave() << "; middled " << a.p_middled()
+                             << " vs " << b.p_middled() << "; play wicket " << a.p_wicket_play(1.0) << " vs "
+                             << b.p_wicket_play(1.0));
+        CHECK(agree(a.p_wicket_leave(), b.p_wicket_leave()));
+        CHECK(agree(a.p_middled(), b.p_middled()));
+        CHECK(agree(a.p_wicket_play(1.0), b.p_wicket_play(1.0)));
+        CHECK(a.p_wicket_play(1.0) != b.p_wicket_play(1.0));  // different streams, not the same numbers
+    }
 }
 
 TEST_CASE("every outcome appears in a realistic batch, with plausible rates") {
@@ -339,4 +464,48 @@ TEST_CASE("leave and play are compared on the same deliveries") {
     }
     WARN("CRN variance ratio, leave against play: " << variance(independent) / variance(paired));
     CHECK(variance(paired) < variance(independent));
+}
+
+// ---- Cache-line layout ------------------------------------------------------------------------
+
+TEST_CASE("per-thread counts and batch buffers start on their own cache lines") {
+    STATIC_REQUIRE(alignof(PaddedSummary) == 64);
+    STATIC_REQUIRE(sizeof(PaddedSummary) % 64 == 0);
+    STATIC_REQUIRE(sizeof(Summary) % 64 != 0);  // why packed per-thread Summary slots would share lines
+    const PaddedSummary slots[2]{};
+    const auto at = [](const void* p) { return reinterpret_cast<std::uintptr_t>(p); };
+    CHECK(at(&slots[0]) % 64 == 0);
+    CHECK(at(&slots[1]) - at(&slots[0]) >= 64);
+
+    BatchStorage batch(1'001);
+    const OutcomeBatch out = batch.outcomes();
+    const ReleaseBatch in = batch.releases();
+    for (const double* p : {in.x.data(), in.z.data(), in.vx.data(), in.vy.data(), in.vz.data()}) CHECK(at(p) % 64 == 0);
+    for (const double* p : {out.bat_x.data(), out.bat_z.data(), out.stumps_x.data(), out.stumps_z.data(),
+                            out.expected_x.data(), out.bounce_x.data(), out.bounce_y.data()})
+        CHECK(at(p) % 64 == 0);
+    CHECK(at(out.leave.data()) % 64 == 0);
+    CHECK(at(out.play.data()) % 64 == 0);
+}
+
+TEST_CASE("a batch's summary is identical on 1, 4 and 16 threads") {
+    const std::size_t n = 100'000;
+    const auto same = [](const Summary& a, const Summary& b) {
+        return a.n == b.n && a.leave_bowled == b.leave_bowled && a.play == b.play;
+    };
+#ifdef _OPENMP
+    omp_set_num_threads(1);
+    const Summary one = Run(n, 11).summary();
+    omp_set_num_threads(4);
+    const Summary four = Run(n, 11).summary();
+    omp_set_num_threads(16);
+    const Summary sixteen = Run(n, 11).summary();
+    omp_set_num_threads(omp_get_num_procs());
+    CHECK(same(one, four));
+    CHECK(same(one, sixteen));
+#else
+    const Summary one = Run(n, 11).summary();
+#endif
+    CHECK(one.n == n);
+    CHECK_FALSE(same(one, Run(n, 12).summary()));
 }

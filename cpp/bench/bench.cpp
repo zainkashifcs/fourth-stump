@@ -5,9 +5,11 @@
 #include <chrono>
 #include <cstdio>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 #include "fourth_stump_envelope.hpp"
+#include "power_throttling.hpp"
 
 namespace {
 
@@ -56,9 +58,88 @@ double pipeline_ns(std::size_t n, int threads, const Conditions& c) {
     return 1e9 * sec / (static_cast<double>(n) * inner);
 }
 
+// ---- The two random-number policies (ADR-014) ----------------------------------------------
+// Each repetition times both policies back to back, and the order swaps every repetition, so a
+// change in clock speed or load during the run hits both alike. Returns each one's median seconds.
+template <typename A, typename B>
+std::pair<double, double> interleaved_medians(int reps, A&& a, B&& b) {
+    std::vector<double> ta, tb;
+    const auto time = [](auto& run, int r, std::vector<double>& into) {
+        const auto t0 = Clock::now();
+        run(r);
+        into.push_back(std::chrono::duration<double>(Clock::now() - t0).count());
+    };
+    for (int r = 0; r < reps; ++r) {
+        if (r % 2 == 0) time(a, r, ta), time(b, r, tb);
+        else time(b, r, tb), time(a, r, ta);
+    }
+    const auto median = [](std::vector<double>& v) {
+        std::nth_element(v.begin(), v.begin() + static_cast<std::ptrdiff_t>(v.size() / 2), v.end());
+        return v[v.size() / 2];
+    };
+    return {median(ta), median(tb)};
+}
+
+// Both policies on the full pipeline, same releases, same thread count.
+std::pair<double, double> policy_pipeline_ns(std::size_t n, int threads, const Conditions& c) {
+    BatchStorage batch(n);
+    batch.sample(ReleaseSpec{}, c, 99);
+    OutcomeBatch out = batch.outcomes();
+    set_threads(threads);
+    simulate_batch<XoshiroZiggurat>(batch.releases(), c, 0, out);  // warm up both
+    simulate_batch<PhiloxBoxMuller>(batch.releases(), c, 0, out);
+    const auto run = [&](auto policy) {
+        return [&, policy](int r) {
+            for (int k = 0; k < 4; ++k)
+                simulate_batch<decltype(policy)>(batch.releases(), c, static_cast<std::uint64_t>(4 * r + k), out);
+        };
+    };
+    const auto [zig, phi] = interleaved_medians(11, run(XoshiroZiggurat{}), run(PhiloxBoxMuller{}));
+    const double per = 1e9 / (4.0 * static_cast<double>(n));
+    return {zig * per, phi * per};
+}
+
+// Both policies' random draws alone (three normals per delivery), one thread, drawn block by
+// block as simulate_batch draws them.
+std::pair<double, double> policy_draws_ns(const Conditions& c, double& sink) {
+    const std::size_t n = std::size_t{1} << 20;
+    DrawBlock b;
+    const auto run = [&](auto policy) {
+        return [&, policy](int r) {
+            for (std::size_t first = 0; first < n; first += kDrawBlock) {
+                draw_block<decltype(policy)>(static_cast<std::uint64_t>(r), first, kDrawBlock, c, b);
+                sink += b.cs[3] + b.e_z[7];
+            }
+        };
+    };
+    const auto [zig, phi] = interleaved_medians(21, run(XoshiroZiggurat{}), run(PhiloxBoxMuller{}));
+    return {1e9 * zig / static_cast<double>(n), 1e9 * phi / static_cast<double>(n)};
+}
+
+void policy_table(const Conditions& calm, const Conditions& windy, std::initializer_list<int> thread_counts) {
+    std::printf("\n%zu deliveries per batch; the two policies alternate repetition by repetition.\n\n"
+                "| Conditions | Threads | xoshiro256** + Ziggurat, ns per delivery | Philox4x32-10 + Box-Muller, ns per "
+                "delivery | Philox / xoshiro | Million deliveries per second (xoshiro, Philox) |\n|---|---|---|---|---|---|\n",
+                std::size_t{1} << 20);
+    for (const auto& [name, c] : {std::pair{"No wind", calm}, std::pair{"Wind (4, 1) m/s", windy}})
+        for (int t : thread_counts) {
+            const auto [zig, phi] = policy_pipeline_ns(std::size_t{1} << 20, t, c);
+            std::printf("| %s | %d | %.1f | %.1f | %.2f | %.1f, %.1f |\n", name, t, zig, phi, phi / zig, 1e3 / zig, 1e3 / phi);
+        }
+    set_threads(1);
+    double sink = 0.0;
+    const auto [zig, phi] = policy_draws_ns(calm, sink);
+    std::printf("\n| Draws alone, 1 thread | xoshiro256** + Ziggurat | Philox4x32-10 + Box-Muller | Philox / xoshiro |\n"
+                "|---|---|---|---|\n");
+    std::printf("| ns per delivery (3 normals) | %.1f | %.1f | %.2f |\n", zig, phi, phi / zig);
+    std::printf("| ns per normal | %.2f | %.2f | %.2f |\n", zig / 3.0, phi / 3.0, phi / zig);
+    std::fprintf(stderr, "draws checksum %.6f\n", sink);
+}
+
 }  // namespace
 
 int main() {
+    fs::bench::opt_out_of_power_throttling();
     const Conditions calm;
     Conditions windy;  // wind along the pitch switches on the kernel's Newton steps (ADR-012)
     windy.wind_x = 4.0;
@@ -76,6 +157,7 @@ int main() {
         const double ns = pipeline_ns(std::size_t{1} << 20, t, windy);
         std::printf("| Wind (4, 1) m/s | %d | %d | %.1f | %.1f |\n", 1 << 20, t, ns, 1e3 / ns);
     }
+    policy_table(calm, windy, thread_counts);
 
     // Trajectory only, one thread, same deliveries: the kernel against RK4 at several
     // step sizes, each with its worst error against a converged reference (RK4 at

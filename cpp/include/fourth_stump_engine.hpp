@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -424,34 +425,177 @@ inline Draws draw(std::uint64_t seed, std::uint64_t index, const Conditions& c) 
     return {cs, seam_deviation, std::clamp(c.e_z + c.sigma_ez * normal(rng), 0.0, 1.0)};
 }
 
+// ---- Counter-based random numbers (ADR-014) ---------------------------------------------
+// Philox4x32-10 (Salmon et al., SC 2011): ten rounds of a keyed bijection on a 128-bit
+// counter. Output is a pure function of (counter, key), so there is no state to carry.
+using PhiloxCounter = std::array<std::uint32_t, 4>;
+using PhiloxKey = std::array<std::uint32_t, 2>;
+constexpr PhiloxCounter philox4x32_10(PhiloxCounter x, PhiloxKey k) noexcept {
+    for (int r = 0; r < 10; ++r) {
+        const std::uint64_t p0 = std::uint64_t{0xD2511F53u} * x[0];
+        const std::uint64_t p1 = std::uint64_t{0xCD9E8D57u} * x[2];
+        x = {static_cast<std::uint32_t>(p1 >> 32) ^ x[1] ^ k[0], static_cast<std::uint32_t>(p1),
+             static_cast<std::uint32_t>(p0 >> 32) ^ x[3] ^ k[1], static_cast<std::uint32_t>(p0)};
+        k[0] += 0x9E3779B9u;
+        k[1] += 0xBB67AE85u;
+    }
+    return x;
+}
+
+// A 32-bit word as a uniform on the open interval (0, 1): an odd multiple of 2^-33, exact.
+constexpr double unit32(std::uint32_t w) noexcept { return (static_cast<double>(w) + 0.5) * 0x1.0p-32; }
+
+// Branchless polynomial kernels, so a loop of Box-Muller transforms vectorises without a
+// vector maths library or -ffast-math. Nothing is computed inside a condition: under the
+// default -ftrapping-math GCC will not if-convert a conditional floating-point operation,
+// so every select is on integer bits or a 0/1 weight. Measured against the standard
+// library over every input the batch can produce (test_engine.cpp, ADR-014).
+//
+// Natural log of a positive normal double: x = 2^e m with m in [sqrt(2)/2, sqrt(2)],
+// log m = 2 atanh(s) with s = (m - 1) / (m + 1), |s| < 0.172, as a Taylor series to s^19.
+inline double log_branchless(double x) noexcept {
+    const auto bits = std::bit_cast<std::uint64_t>(x);
+    const std::uint64_t mantissa = bits & 0x000FFFFFFFFFFFFFULL;
+    const std::uint64_t high = mantissa > 0x6A09E667F3BCDULL ? 1 : 0;  // m above sqrt(2): halve it
+    const double m = std::bit_cast<double>(mantissa | (0x3FF0000000000000ULL - (high << 52)));
+    const double e = std::bit_cast<double>(((bits >> 52) + high) | 0x4330000000000000ULL) - (0x1.0p52 + 1023.0);
+    const double f = m - 1.0;
+    const double s = f / (2.0 + f);
+    const double z = s * s;
+    double q = 1.0 / 19;
+    for (const double coef : {1.0 / 17, 1.0 / 15, 1.0 / 13, 1.0 / 11, 1.0 / 9, 1.0 / 7, 1.0 / 5, 1.0 / 3}) q = q * z + coef;
+    // log 2 split so that e * hi is exact (fdlibm's split).
+    return e * 6.93147180369123816490e-01 + (2.0 * s + (2.0 * s * z * q + e * 1.90821492927058770002e-10));
+}
+
+// sin and cos of 2 pi unit32(w). The nearest quarter turn comes from the word itself, so the
+// remaining angle a = 2 pi (u - n/4) is formed without cancellation and |a| <= pi/4; Taylor
+// series to a^17 and a^18. The quarter turns are applied as a 0/1 blend and sign-bit flips.
+struct SinCos {
+    double sin, cos;
+};
+inline SinCos sincos_2pi_unit32(std::uint32_t w) noexcept {
+    const std::uint64_t n = (std::uint64_t{w} + (1u << 29)) >> 30;  // nearest integer to 4u, 0..4
+    const double quarter = std::bit_cast<double>(n | 0x4330000000000000ULL) - 0x1.0p52;
+    const double a = 2.0 * kPi * (unit32(w) - 0.25 * quarter);
+    const double z = a * a;
+    double ps = 1.0 / 355687428096000.0;  // 1/17!
+    for (const double coef : {-1.0 / 1307674368000.0, 1.0 / 6227020800.0, -1.0 / 39916800.0, 1.0 / 362880.0,
+                           -1.0 / 5040.0, 1.0 / 120.0, -1.0 / 6.0})
+        ps = ps * z + coef;
+    const double s = a + a * z * ps;
+    double pc = -1.0 / 6402373705728000.0;  // -1/18!
+    for (const double coef : {1.0 / 20922789888000.0, -1.0 / 87178291200.0, 1.0 / 479001600.0, -1.0 / 3628800.0,
+                           1.0 / 40320.0, -1.0 / 720.0, 1.0 / 24.0, -0.5})
+        pc = pc * z + coef;
+    const double c = 1.0 + z * pc;
+    // Turn by n quarters: swap for odd n (exact, as s and c are never zero), negate sin for
+    // n = 2, 3 and cos for n = 1, 2.
+    const double odd = std::bit_cast<double>((n & 1) | 0x4330000000000000ULL) - 0x1.0p52;
+    const double s1 = s * (1.0 - odd) + c * odd, c1 = c * (1.0 - odd) + s * odd;
+    return {std::bit_cast<double>(std::bit_cast<std::uint64_t>(s1) ^ ((n & 2) << 62)),
+            std::bit_cast<double>(std::bit_cast<std::uint64_t>(c1) ^ (((n + 1) & 2) << 62))};
+}
+
+// ---- Random-number policies --------------------------------------------------------------
+// A policy turns (seed, delivery index) into a delivery's Draws. simulate_batch draws a block
+// of deliveries into fixed-size stack arrays, then runs the kernel over the block.
+inline constexpr std::size_t kDrawBlock = 64;
+struct DrawBlock {
+    alignas(64) std::array<double, kDrawBlock> cs, seam_deviation, e_z;
+};
+
+// The default: xoshiro256** seeded per delivery, Ziggurat normals. Calibration depends on it.
+struct XoshiroZiggurat {
+    static constexpr bool kVectorisable = false;  // Ziggurat rejection loops
+    static void prepare() noexcept { (void)ziggurat(); }  // build the tables before any parallel region
+    static Draws draw(std::uint64_t seed, std::uint64_t index, const Conditions& c) noexcept {
+        return fs::draw(seed, index, c);
+    }
+};
+
+// Philox4x32-10 keyed by the seed, with the delivery index in the counter, and Box-Muller
+// normals. One Philox call per delivery: four 32-bit words make two pairs of normals, of which
+// the first three are used. Counter word 2 numbers the 128-bit blocks a delivery draws; three
+// normals need one, so it is 0. A fixed number of operations per delivery, so it vectorises.
+struct PhiloxBoxMuller {
+    static constexpr bool kVectorisable = true;
+    static void prepare() noexcept {}
+    // The delivery's standard normals: (swing, seam deviation, restitution).
+    static std::array<double, 3> normals(std::uint64_t seed, std::uint64_t index) noexcept {
+        const PhiloxCounter w =
+            philox4x32_10({static_cast<std::uint32_t>(index), static_cast<std::uint32_t>(index >> 32), 0, 0},
+                          {static_cast<std::uint32_t>(seed), static_cast<std::uint32_t>(seed >> 32)});
+        // fabs changes nothing (the argument is positive) but tells GCC sqrt cannot set errno,
+        // which removes the branch that would stop the loop vectorising.
+        const double r0 = std::sqrt(std::fabs(-2.0 * log_branchless(unit32(w[0]))));
+        const double r1 = std::sqrt(std::fabs(-2.0 * log_branchless(unit32(w[2]))));
+        const SinCos t0 = sincos_2pi_unit32(w[1]), t1 = sincos_2pi_unit32(w[3]);
+        return {r0 * t0.cos, r0 * t0.sin, r1 * t1.cos};
+    }
+    static Draws draw(std::uint64_t seed, std::uint64_t index, const Conditions& c) noexcept {
+        const std::array<double, 3> z = normals(seed, index);
+        return {c.cs_mean + c.sigma_swing * z[0], c.sigma_seam * z[1], std::clamp(c.e_z + c.sigma_ez * z[2], 0.0, 1.0)};
+    }
+};
+
+// Draws for deliveries first .. first + count - 1 (count <= kDrawBlock) into b. Delivery i's
+// draws depend only on (seed, i), never on the block it falls in.
+template <typename Policy>
+inline void draw_block(std::uint64_t seed, std::uint64_t first, std::size_t count, const Conditions& c,
+                       DrawBlock& b) noexcept {
+    const Conditions local = c;  // a copy the stores below provably cannot alias, so its loads hoist
+    const auto put = [&](std::size_t j) {
+        const Draws d = Policy::draw(seed, first + j, local);
+        b.cs[j] = d.cs;
+        b.seam_deviation[j] = d.seam_deviation;
+        b.e_z[j] = d.e_z;
+    };
+    if constexpr (Policy::kVectorisable) {
+#ifdef _OPENMP
+#pragma omp simd
+#endif
+        for (std::size_t j = 0; j < count; ++j) put(j);
+    } else {
+        for (std::size_t j = 0; j < count; ++j) put(j);
+    }
+}
+
 // Simulate every delivery in the batch. Each result is written to its own index and
 // depends only on (seed, index, inputs), so output is bit-identical for any thread
-// count or schedule (ADR-003).
+// count or schedule (ADR-003). Policy picks the random numbers; the default is the one
+// calibration was run with (ADR-014).
 // Preconditions, not checked here (the Python binding checks them): every release starts
 // above the pitch (z > kBallRadius) and travels down it (vy < 0) faster than any tailwind.
 // A second bounce is not modelled.
+template <typename Policy = XoshiroZiggurat>
 inline void simulate_batch(const ReleaseBatch& in, const Conditions& c, std::uint64_t seed,
                            OutcomeBatch& out) noexcept {
-    (void)ziggurat();  // build the tables before the parallel region
+    Policy::prepare();
     const Pitch pitch = pitch_of(c);
-    const auto n = static_cast<std::ptrdiff_t>(in.size());
+    const std::size_t n = in.size();
+    const auto blocks = static_cast<std::ptrdiff_t>((n + kDrawBlock - 1) / kDrawBlock);
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
-    for (std::ptrdiff_t k = 0; k < n; ++k) {
-        const auto i = static_cast<std::size_t>(k);
-        const Draws d = draw(seed, i, c);
-        const DeliveryResult r =
-            simulate_delivery({in.x[i], in.z[i], in.vx[i], in.vy[i], in.vz[i]}, d.cs, d.seam_deviation, c, pitch, d.e_z);
-        out.bat_x[i] = r.bat.x;
-        out.bat_z[i] = r.bat.z;
-        out.stumps_x[i] = r.stumps.x;
-        out.stumps_z[i] = r.stumps.z;
-        out.expected_x[i] = r.expected_x;
-        out.bounce_x[i] = r.bounce_x;
-        out.bounce_y[i] = r.bounce_y;
-        out.leave[i] = static_cast<std::uint8_t>(r.leave);
-        out.play[i] = static_cast<std::uint8_t>(r.play);
+    for (std::ptrdiff_t k = 0; k < blocks; ++k) {
+        const std::size_t first = static_cast<std::size_t>(k) * kDrawBlock, count = std::min(kDrawBlock, n - first);
+        DrawBlock d;  // on this thread's stack
+        draw_block<Policy>(seed, first, count, c, d);
+        for (std::size_t j = 0; j < count; ++j) {
+            const std::size_t i = first + j;
+            const DeliveryResult r = simulate_delivery({in.x[i], in.z[i], in.vx[i], in.vy[i], in.vz[i]}, d.cs[j],
+                                                       d.seam_deviation[j], c, pitch, d.e_z[j]);
+            out.bat_x[i] = r.bat.x;
+            out.bat_z[i] = r.bat.z;
+            out.stumps_x[i] = r.stumps.x;
+            out.stumps_z[i] = r.stumps.z;
+            out.expected_x[i] = r.expected_x;
+            out.bounce_x[i] = r.bounce_x;
+            out.bounce_y[i] = r.bounce_y;
+            out.leave[i] = static_cast<std::uint8_t>(r.leave);
+            out.play[i] = static_cast<std::uint8_t>(r.play);
+        }
     }
 }
 
@@ -487,6 +631,25 @@ inline Summary summarize(std::span<const std::uint8_t> leave, std::span<const st
     }
     return s;
 }
+
+// Cache-line audit: what more than one thread writes during simulate_batch and summarize.
+// - The nine OutcomeBatch arrays are the only shared writes in simulate_batch. Under
+//   schedule(static) each thread writes one contiguous block of indices, so two threads
+//   can meet on a 64-byte line only where one block ends and the next begins: at most one
+//   line per array per block boundary, 9 (T - 1) lines for T threads (135 at 16 threads,
+//   against about 90,600 lines for 100,000 deliveries). The two writers reach that line at
+//   opposite ends of their blocks, so it changes hands a few times per batch. That holds
+//   for any base address; BatchStorage's 64-byte alignment also keeps two arrays off one
+//   line. Padding would change neither, so the buffers stay packed.
+// - Inputs, Conditions, the Pitch and the Ziggurat tables (built before the parallel
+//   region) are only read. There are no per-thread counters and no reductions.
+// - summarize is serial, so its Summary has one writer.
+// Per-thread counts, should a caller want them, go in PaddedSummary: an array of plain
+// Summary (56 bytes) puts neighbouring threads on one line. latency.cpp measures the cost.
+struct alignas(64) PaddedSummary {
+    Summary s;
+};
+static_assert(alignof(PaddedSummary) == 64 && sizeof(PaddedSummary) % 64 == 0);
 
 // ---- Building releases (not part of the hot loop) ------------------------------------------
 // The release from (x, z) at `speed` that, under mean swing and no wind, bounces at

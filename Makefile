@@ -24,7 +24,7 @@ TESTS   := $(BUILD)/tests$(EXE)
 BENCH   := $(BUILD)/bench$(EXE)
 ERRTOOL := $(BUILD)/error_bound$(EXE)
 
-.PHONY: all test cpp-test bench error-bound python pytest viz-data clean
+.PHONY: all test cpp-test bench error-bound python pytest bench-ipc viz-data clean
 
 all: $(TESTS) $(BENCH) $(ERRTOOL)
 
@@ -53,10 +53,21 @@ $(BUILD)/test_%.o: cpp/tests/test_%.cpp $(HEADERS) | $(BUILD)
 $(TESTS): $(BUILD)/test_engine.o $(BUILD)/test_alloc.o $(BUILD)/catch.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-$(BENCH): cpp/bench/bench.cpp $(HEADERS) | $(BUILD)
+$(BENCH): cpp/bench/bench.cpp $(HEADERS) cpp/bench/power_throttling.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(WERROR) $< -o $@ $(LDFLAGS)
 
 $(ERRTOOL): cpp/bench/error_bound.cpp $(HEADERS) | $(BUILD)
+	$(CXX) $(CXXFLAGS) $(WERROR) $< -o $@ $(LDFLAGS)
+
+# Tail latency per simulate_batch call, and the measured cost of false sharing.
+LATENCY := $(BUILD)/latency$(EXE)
+.PHONY: latency
+all: $(LATENCY)
+
+latency: $(LATENCY)
+	./$(LATENCY) | tee $(BUILD)/latency.md
+
+$(LATENCY): cpp/bench/latency.cpp $(HEADERS) cpp/bench/power_throttling.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) $(WERROR) $< -o $@ $(LDFLAGS)
 
 # Python binding, compiled against the uv-managed interpreter.
@@ -65,6 +76,10 @@ python:
 
 pytest: python
 	uv run pytest -q
+
+# Delivering outcomes to Python: new arrays per call against views of reused storage (ADR-015).
+bench-ipc: python | $(BUILD)
+	$(PY) -m fourth_stump.bench_ipc | tee $(BUILD)/bench_ipc.md
 
 viz-data: python
 	$(PY) -m fourth_stump.export_viz

@@ -16,6 +16,10 @@ _Avoid_: Run, sample set, simulation
 A delivery's position within its batch. Together with the seed it fully determines that delivery's random draws.
 _Avoid_: Sample id, path number
 
+**Random-number policy**:
+The compile-time choice of how a delivery's random draws are made from the seed and its delivery index: xoshiro256** with Ziggurat normals (the default, used for calibration), or Philox4x32-10 with Box-Muller normals (ADR-014).
+_Avoid_: Policy on its own (that word is avoided for the leave rule), RNG mode, generator setting
+
 **Bit-reproducible**:
 Producing identical output, bit for bit, for the same seed and batch. Promised across thread counts on one binary.
 _Avoid_: Deterministic (too vague on its own), repeatable

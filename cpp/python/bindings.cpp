@@ -146,5 +146,5 @@ PYBIND11_MODULE(_engine, m) {
     k["max_wind"] = envelope::kMaxWind, k["published_bound"] = envelope::kPublishedBound;
     m.attr("CONSTANTS") = k;
     m.attr("LEAVE_OUTCOMES") = std::vector<std::string>{"safe", "bowled"};
-    m.attr("PLAY_OUTCOMES") = std::vector<std::string>{"middled", "edged_safe", "edged_caught", "missed", "missed_bowled"};
+    m.attr("PLAY_OUTCOMES") = std::vector<std::string>{"middled", "edged_safe", "edged_carried", "missed", "missed_bowled"};
 }

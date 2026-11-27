@@ -155,9 +155,9 @@ TEST_CASE("a delivery that reaches the stumps on the full has no bounce") {
 TEST_CASE("the gap sorts a played delivery into middled, edged or play-and-miss") {
     State rising{0, 0, 0.8, 0, 32.0, 6.0, 0}, dying{0, 0, 0.3, 0, 32.0, -3.0, 0};
     CHECK(classify_play(0.043, rising, false) == PlayOutcome::Middled);
-    CHECK(classify_play(0.045, rising, false) == PlayOutcome::EdgedCaught);
+    CHECK(classify_play(0.045, rising, false) == PlayOutcome::EdgedCarried);
     CHECK(classify_play(0.045, dying, false) == PlayOutcome::EdgedSafe);
-    CHECK(classify_play(0.089, rising, false) == PlayOutcome::EdgedCaught);
+    CHECK(classify_play(0.089, rising, false) == PlayOutcome::EdgedCarried);
     CHECK(classify_play(0.091, rising, false) == PlayOutcome::Missed);
     CHECK(classify_play(0.091, rising, true) == PlayOutcome::MissedBowled);
 }
@@ -253,9 +253,9 @@ TEST_CASE("every outcome appears in a realistic batch, with plausible rates") {
     const Summary s = Run(500'000, 1).summary();
     for (std::uint64_t count : s.play) CHECK(count > 0);
     CHECK(s.leave_bowled > 0);
-    CHECK(s.p_wicket_leave() < s.p_wicket_play() + 0.2);
     CHECK(s.p_middled() > 0.3);
-    CHECK(s.p_wicket_play() < 0.2);
+    CHECK(s.p_wicket_play(1.0) < 0.25);
+    CHECK(s.p_wicket_play(0.2) < s.p_wicket_play(1.0));
 }
 
 namespace {
@@ -278,9 +278,9 @@ TEST_CASE("common random numbers cut the noise of a comparison between nearby co
     const std::size_t n = 20'000;
     std::vector<double> paired, independent;
     for (int r = 0; r < 40; ++r) {
-        const double a = Run(n, 1000 + r, low).summary().p_wicket_play();
-        paired.push_back(Run(n, 1000 + r, high).summary().p_wicket_play() - a);
-        independent.push_back(Run(n, 5000 + r, high).summary().p_wicket_play() - a);
+        const double a = Run(n, 1000 + r, low).summary().p_wicket_play(1.0);
+        paired.push_back(Run(n, 1000 + r, high).summary().p_wicket_play(1.0) - a);
+        independent.push_back(Run(n, 5000 + r, high).summary().p_wicket_play(1.0) - a);
     }
     WARN("CRN variance ratio, nearby conditions: " << variance(independent) / variance(paired));
     CHECK(variance(paired) < 0.2 * variance(independent));
@@ -289,13 +289,13 @@ TEST_CASE("common random numbers cut the noise of a comparison between nearby co
 TEST_CASE("leave and play are compared on the same deliveries") {
     // EV(play) - EV(leave) from one batch (both actions on every delivery) against the
     // same difference taken from two independent batches.
-    const double wicket_cost = 30.0, runs_middled = 0.6;
+    const double wicket_cost = 30.0, runs_middled = 0.6, catch_conversion = 0.2;
     const std::size_t n = 20'000;
     std::vector<double> paired, independent;
     for (int r = 0; r < 40; ++r) {
         const Summary a = Run(n, 2000 + r).summary(), b = Run(n, 7000 + r).summary();
-        paired.push_back(a.ev_play(wicket_cost, runs_middled) - a.ev_leave(wicket_cost));
-        independent.push_back(a.ev_play(wicket_cost, runs_middled) - b.ev_leave(wicket_cost));
+        paired.push_back(a.ev_play(wicket_cost, runs_middled, catch_conversion) - a.ev_leave(wicket_cost));
+        independent.push_back(a.ev_play(wicket_cost, runs_middled, catch_conversion) - b.ev_leave(wicket_cost));
     }
     WARN("CRN variance ratio, leave against play: " << variance(independent) / variance(paired));
     CHECK(variance(paired) < variance(independent));

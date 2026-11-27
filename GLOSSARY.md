@@ -104,12 +104,16 @@ _Avoid_: Beaten, missed
 An edged delivery reaching the slip cordon before it touches the ground.
 _Avoid_: Reach, travel
 
+**Catch conversion**:
+The share of edges carrying to the slip cordon that are caught. Fitted per venue; it stands for edges that fly wide, fall between catchers or are dropped.
+_Avoid_: Catch rate, catch probability, drop rate
+
 **Slip cordon**:
 The catchers standing behind the batter on the off side, including the wicketkeeper.
 _Avoid_: Slips (excludes the keeper), cordon, behind
 
 **Dismissal**:
-A wicket falling in one of the two ways the model recognises: bowled, or caught in the slip cordon off an edge. LBW, catches off middled deliveries, and run-outs are outside the model.
+A wicket falling in one of the two ways the model recognises: bowled, or caught in the slip cordon off an edge that carries. LBW, catches off middled deliveries, and run-outs are outside the model.
 _Avoid_: Out, wicket (reserved for the count of batters dismissed)
 
 **Common random numbers (CRN)**:

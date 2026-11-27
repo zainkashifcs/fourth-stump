@@ -25,6 +25,12 @@ LEAVE and PLAY are evaluated on the same simulated delivery with the same random
 - Each delivery needs a second, cheaper trajectory evaluation for the batter's expected arrival point.
 - The exact boundary between middled and edged within the contact band is a model constant, set in the prototype.
 
+## Amendment, 2026-11-27: catch conversion
+
+As first written, every edge that carried was a dismissal. Calibration against real data showed what that costs: vertical restitution became the only lever on how many edges turn into catches, and the fit pinned it at the floor of its literature range at all three venues (ADR-010). An edge that carries is now caught only with probability equal to the venue's catch conversion, which stands for edges that fly wide of the cordon, fall between catchers or are dropped. The engine's outcome for such a delivery is "edged, carried"; the catch conversion is applied in expectation when probabilities and expected values are computed, so the hot loop and its random draws are unchanged. This is open to review.
+
+Edge speed also depends on how thin the edge is (a thin edge keeps more pace than a thick one), so that the share of edges that carry varies smoothly with restitution instead of switching from none to all.
+
 ## Settled after this decision
 
 - **When the batter commits, and what they assume afterwards**: see ADR-008.

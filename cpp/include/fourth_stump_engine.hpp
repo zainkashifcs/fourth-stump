@@ -169,7 +169,9 @@ struct ReleaseBatch {
 };
 
 enum class LeaveOutcome : std::uint8_t { Safe = 0, Bowled = 1 };
-enum class PlayOutcome : std::uint8_t { Middled = 0, EdgedSafe = 1, EdgedCaught = 2, Missed = 3, MissedBowled = 4 };
+// EdgedCarried means the edge reached the slip cordon; whether it is then caught is the
+// catch conversion, applied in expectation by Summary (ADR-010).
+enum class PlayOutcome : std::uint8_t { Middled = 0, EdgedSafe = 1, EdgedCarried = 2, Missed = 3, MissedBowled = 4 };
 
 struct OutcomeBatch {
     std::span<double> bat_x, bat_z;        // arrival at the bat plane
@@ -366,7 +368,7 @@ inline bool edge_carries(const State& bat, double gap) noexcept {
 
 inline PlayOutcome classify_play(double gap, const State& bat, bool bowled) noexcept {
     if (gap < kBatHalfWidth - kEdgeInnerMargin) return PlayOutcome::Middled;
-    if (gap < kBatHalfWidth + kBallRadius) return edge_carries(bat, gap) ? PlayOutcome::EdgedCaught : PlayOutcome::EdgedSafe;
+    if (gap < kBatHalfWidth + kBallRadius) return edge_carries(bat, gap) ? PlayOutcome::EdgedCarried : PlayOutcome::EdgedSafe;
     return bowled ? PlayOutcome::MissedBowled : PlayOutcome::Missed;
 }
 
@@ -445,12 +447,16 @@ struct Summary {
     std::array<std::uint64_t, 5> play{};  // indexed by PlayOutcome
 
     double p_wicket_leave() const noexcept { return ratio(leave_bowled); }
-    double p_wicket_play() const noexcept { return ratio(play[2] + play[4]); }
+    // A played delivery is a dismissal if it is missed and hits the stumps, or if its
+    // edge carries and is caught; catch_conversion is the share of carrying edges caught.
+    double p_wicket_play(double catch_conversion) const noexcept {
+        return catch_conversion * ratio(play[2]) + ratio(play[4]);
+    }
     double p_middled() const noexcept { return ratio(play[0]); }
     // EV(action) = E[runs | action] - lambda * P(wicket | action)
     double ev_leave(double wicket_cost) const noexcept { return -wicket_cost * p_wicket_leave(); }
-    double ev_play(double wicket_cost, double runs_middled) const noexcept {
-        return runs_middled * p_middled() - wicket_cost * p_wicket_play();
+    double ev_play(double wicket_cost, double runs_middled, double catch_conversion) const noexcept {
+        return runs_middled * p_middled() - wicket_cost * p_wicket_play(catch_conversion);
     }
 
   private:

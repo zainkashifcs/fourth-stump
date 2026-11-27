@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import (ARMS, CONSTANTS, LEAVE_OUTCOMES, PLAY_OUTCOMES, VENUES, Conditions, aim, conditions_for,
+from . import (ARMS, CONSTANTS, LEAVE_OUTCOMES, VENUES, Conditions, aim, catch_conversion_for, conditions_for,
                release_spec_for, simulate, summarize, trace)
 from .venues import DATA, expected_values
 
@@ -48,15 +48,15 @@ def path_of(t: dict) -> list[list[float]]:
     return np.round(t["path"][:, :3], 4).tolist()
 
 
-def evaluate(release: list[float], c: Conditions, ball_age: int, seed: int) -> dict:
+def evaluate(release: list[float], c: Conditions, venue: str, ball_age: int, seed: int) -> dict:
     """Outcome probabilities and expected values for one release repeated under conditions c."""
     arrays = [np.full(BATCH, v) for v in release]
-    summary = summarize(simulate(*arrays, conditions=c, seed=seed))
+    summary = summarize(simulate(*arrays, conditions=c, seed=seed), catch_conversion=catch_conversion_for(venue))
     cost, _ = wicket_cost(ball_age)
     ev_leave, ev_play = expected_values(summary, cost, runs_middled())
     return {
         "p_wicket_leave": round(summary["p_wicket_leave"], 5), "p_wicket_play": round(summary["p_wicket_play"], 5),
-        "p_middled": round(summary["middled"], 5), "p_edged": round(summary["edged_safe"] + summary["edged_caught"], 5),
+        "p_middled": round(summary["middled"], 5), "p_edged": round(summary["edged_safe"] + summary["edged_carried"], 5),
         "p_missed": round(summary["missed"] + summary["missed_bowled"], 5),
         "wicket_cost": round(cost, 3), "ev_leave": round(ev_leave, 4), "ev_play": round(ev_play, 4),
         "best": "play" if ev_play > ev_leave else "leave",
@@ -70,7 +70,7 @@ def scenario(venue: str, ball_age: int, arm: str, end: int, rng: np.random.Gener
     fan = [path_of(trace(release, c.cs_mean + c.sigma_swing * rng.standard_normal(),
                          c.sigma_seam * rng.standard_normal(), c, 24)) for _ in range(FAN)]
     return {"venue": venue, "ball_age": ball_age, "arm": arm, "end": end, "path": path_of(mean),
-            "bounce_index": mean["bounce_index"], "fan": fan, **evaluate(release, c, ball_age, SEED)}
+            "bounce_index": mean["bounce_index"], "fan": fan, **evaluate(release, c, venue, ball_age, SEED)}
 
 
 def game_delivery(i: int, rng: np.random.Generator) -> dict:
@@ -83,9 +83,12 @@ def game_delivery(i: int, rng: np.random.Generator) -> dict:
     # What the batter can know at the bounce: this delivery's swing, not its seam deviation.
     seen = conditions_for(venue, ball_age, end, arm)
     seen.cs_mean, seen.sigma_swing = cs, 0.0
+    # An edge that carries is caught with the venue catch conversion; otherwise it is safe.
+    caught = rng.random() < catch_conversion_for(venue)
+    outcome_play = ("middled", "edged_safe", "edged_caught" if caught else "edged_safe", "missed", "missed_bowled")[actual["play"]]
     return {"id": i, "venue": venue, "ball_age": ball_age, "arm": arm, "end": end, "path": path_of(actual),
             "bounce_index": actual["bounce_index"], "outcome_leave": LEAVE_OUTCOMES[actual["leave"]],
-            "outcome_play": PLAY_OUTCOMES[actual["play"]], **evaluate(release, seen, ball_age, SEED + i)}
+            "outcome_play": outcome_play, **evaluate(release, seen, venue, ball_age, SEED + i)}
 
 
 def main() -> None:

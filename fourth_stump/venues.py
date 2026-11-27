@@ -16,7 +16,7 @@ def _load_venues() -> dict:
     calibrated = DATA / "calibrated.json"
     if calibrated.exists():
         for key, fit in json.loads(calibrated.read_text(encoding="utf-8")).get("venues", {}).items():
-            venues[key].update({k: fit[k] for k in ("sigma_swing", "sigma_seam", "e_z") if k in fit})
+            venues[key].update({k: fit[k] for k in ("sigma_swing", "sigma_seam", "e_z", "catch_conversion") if k in fit})
     return venues
 
 
@@ -45,7 +45,12 @@ def release_spec_for(arm: str = "right") -> ReleaseSpec:
     return spec
 
 
-def summarize(outcomes: dict, mask: np.ndarray | None = None) -> dict:
+def catch_conversion_for(venue: str) -> float:
+    """Share of carrying edges that are caught at this venue; 1.0 until calibrated (ADR-010)."""
+    return VENUES[venue].get("catch_conversion", 1.0)
+
+
+def summarize(outcomes: dict, mask: np.ndarray | None = None, catch_conversion: float = 1.0) -> dict:
     """Outcome probabilities for a simulated batch, optionally over a subset of deliveries."""
     leave, play = outcomes["leave"], outcomes["play"]
     if mask is not None:
@@ -55,7 +60,7 @@ def summarize(outcomes: dict, mask: np.ndarray | None = None) -> dict:
     summary = {name: counts[i] / n for i, name in enumerate(PLAY_OUTCOMES)}
     summary["n"] = len(leave)
     summary["p_wicket_leave"] = float(leave.sum()) / n
-    summary["p_wicket_play"] = summary["edged_caught"] + summary["missed_bowled"]
+    summary["p_wicket_play"] = catch_conversion * summary["edged_carried"] + summary["missed_bowled"]
     return summary
 
 

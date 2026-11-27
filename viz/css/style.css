@@ -81,7 +81,7 @@ code, kbd { font-family: ui-monospace, Consolas, monospace; font-size: 0.86em; }
 
 main { max-width: 1560px; margin: 0 auto; }
 .loading, .load-error { max-width: 60ch; padding: 24px; background: var(--surface); border: 1px solid var(--line); }
-.load-error { border-left: 4px solid var(--red); display: grid; gap: 10px; }
+.load-error { border-color: var(--red); display: grid; gap: 10px; }
 .load-error h2 { font: 700 1.4rem/1.2 var(--display); }
 .fine { font-size: 0.8rem; color: var(--muted); }
 
@@ -179,7 +179,7 @@ kbd {
 }
 .notes { font-size: 0.86rem; }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; min-height: 34px; font-size: 0.86rem; font-weight: 600; }
-.note-warn { padding-left: 10px; border-left: 3px solid var(--warn); }
+.note-warn { padding: 6px 10px; border: 1px solid var(--warn); }
 .empty { color: var(--muted); }
 
 .action-table { width: 100%; border-collapse: collapse; }

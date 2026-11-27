@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { percent, signedRuns, lineAtStumps, heightAtStumps, outcomeLabel } from '../js/format.js';
 import { addChoice, cutIndex, emptyScore, pickRound } from '../js/game-logic.js';
 import { validate, findScenario, venueKeys } from '../js/data.js';
+import { animationFor } from '../js/outcomes.js';
 
 test('formats probabilities and expected values', () => {
   assert.equal(percent(0.05357), '5.4%');
@@ -72,4 +73,32 @@ test('the exported file passes validation and has every scenario', () => {
     }
   }
   assert.throws(() => validate({ meta: {} }), /meta\.constants/);
+});
+
+test('maps every action and outcome to its animation', () => {
+  const pick = (action, outcome) => {
+    const { batter, ball, flash } = animationFor(action, outcome);
+    return [batter, ball, flash];
+  };
+  assert.deepEqual(pick('leave', 'safe'), ['leave', 'through', null]);
+  assert.deepEqual(pick('leave', 'bowled'), ['leave', 'stumps', 'Bowled']);
+  assert.deepEqual(pick('play', 'middled'), ['defend', 'dead', null]);
+  assert.deepEqual(pick('play', 'edged_safe'), ['defend', 'edge-short', null]);
+  assert.deepEqual(pick('play', 'edged_caught'), ['defend', 'edge-carry', 'Caught']);
+  assert.deepEqual(pick('play', 'missed'), ['defend', 'through', null]);
+  assert.deepEqual(pick('play', 'missed_bowled'), ['defend', 'stumps', 'Bowled']);
+  // an outcome the page does not know still has the batter take the action
+  assert.deepEqual(pick('play', 'something_new'), ['defend', 'through', null]);
+  assert.deepEqual(pick('leave', undefined), ['leave', 'through', null]);
+});
+
+test('every outcome in the exported file has an animation', () => {
+  const data = JSON.parse(readFileSync(new URL('../data/trajectories.json', import.meta.url)));
+  const seen = new Set();
+  data.game.forEach((d) => seen.add(`leave:${d.outcome_leave}`).add(`play:${d.outcome_play}`));
+  data.scenarios.forEach((s) => (s.fan_outcomes ?? []).forEach((o) => seen.add(`leave:${o.leave}`).add(`play:${o.play}`)));
+  seen.forEach((key) => {
+    const [action, outcome] = key.split(':');
+    assert.notEqual(animationFor(action, outcome).name, 'unknown', key);
+  });
 });

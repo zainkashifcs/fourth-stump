@@ -11,7 +11,8 @@ function el(tag, attributes = {}, text) {
   return node;
 }
 
-// entries: [{ name, color, end: [x, z], fanEnds: [[x, z], ...] }]
+// entries: [{ name, color, end: [x, z], fanEnds: [[x, z], ...], picked?: [x, z] }]
+// `picked` is the sampled delivery being animated in the 3D view.
 export function renderEndOn(svg, constants, entries) {
   const {
     stump_half_width: halfWidth, stump_height: height, ball_radius: radius,
@@ -51,5 +52,8 @@ export function renderEndOn(svg, constants, entries) {
   }))));
   entries.forEach(({ color, end: [x, z] }) => svg.append(el('circle', {
     class: 'endon-mean', cx: X(x), cy: Y(z), r: M(radius), fill: color,
+  })));
+  entries.filter((entry) => entry.picked).forEach(({ color, picked: [x, z] }) => svg.append(el('circle', {
+    class: 'endon-picked', cx: X(x), cy: Y(z), r: M(radius), stroke: color,
   })));
 }

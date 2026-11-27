@@ -9,9 +9,10 @@ import {
   addChoice, cutIndex, emptyScore, isDismissal, otherAction, outcomeOf, pickRound, ROUND_LENGTH,
 } from './game-logic.js';
 import { actionTable, venueColor, wicketCost } from './numbers.js';
+import { animationFor } from './outcomes.js';
+import { createCaption } from './caption.js';
 
-const SPEED = 30; // path points per second, release to bounce
-const REVEAL_SPEED = 16; // slower, so the movement off the pitch can be read
+const REVEAL_RATE = 0.7; // the reveal runs slower, so the movement off the pitch can be read
 
 const PAST = { leave: 'left it', play: 'played' };
 
@@ -23,8 +24,10 @@ export function createGame(data, stage) {
   let position = 0;
   let score = emptyScore();
   let phase = 'choose'; // 'choose' | 'revealed' | 'summary'
+  let ending = null; // the words for the caption once an action is chosen
 
   const viewport = h('div', { class: 'viewport game-viewport', role: 'img' });
+  const caption = createCaption(viewport);
   const host = h('div', { class: 'game-stage' }, viewport);
   const panel = h('div', { class: 'game-panel' });
   const live = h('div', { class: 'game-live', 'aria-live': 'polite' }); // kept across renders so changes are announced
@@ -34,21 +37,43 @@ export function createGame(data, stage) {
   const colorOf = (d) => venueColor(Math.max(keys.indexOf(d.venue), 0));
   const venueOf = (d) => data.venues[d.venue] ?? { name: d.venue, ball: '', ends: [] };
 
+  // Tells the stage how the delivery ends for the chosen action; the caption appears when the ball gets there.
+  function setEnding(d, action) {
+    const outcome = outcomeOf(d, action);
+    const animation = animationFor(action, outcome);
+    ending = { action: actionLabel(action), outcome: outcomeLabel(outcome), flash: animation.flash };
+    stage.setOutcome(0, animation);
+  }
+
   function show(animate) {
     const d = delivery();
-    if (!active || !d || phase === 'summary') return;
-    const last = stage.setDelivery(0, { path: d.path, bounceIndex: d.bounce_index, color: colorOf(d) });
-    const cut = cutIndex(d);
-    if (phase === 'revealed') stage.jump(0, last);
-    else if (animate) stage.play(0, cut, SPEED);
-    else stage.jump(0, cut);
+    caption.clear();
+    if (!active || !d || phase === 'summary') {
+      if (active) stage.clearPlay(0);
+      return;
+    }
+    stage.setPlay(0, {
+      venue: d.venue,
+      arm: d.arm,
+      path: d.path,
+      bounceIndex: d.bounce_index,
+      pauseIndex: cutIndex(d),
+      color: colorOf(d),
+      onEvent: () => caption.show(ending),
+    });
+    if (phase === 'revealed') {
+      setEnding(d, score.choices[score.choices.length - 1].action);
+      stage.jumpTo(0, 'end');
+    } else if (animate) stage.playTo(0, 'pause');
+    else stage.jumpTo(0, 'pause');
   }
 
   function choose(action) {
     if (!active || phase !== 'choose' || !delivery()) return;
     score = addChoice(score, delivery(), action);
     phase = 'revealed';
-    stage.play(0, delivery().path.length - 1, REVEAL_SPEED);
+    setEnding(delivery(), action);
+    stage.playTo(0, 'end', REVEAL_RATE);
     render('next');
   }
 
@@ -56,6 +81,7 @@ export function createGame(data, stage) {
     if (!active || phase !== 'revealed') return;
     if (position + 1 >= round.length) {
       phase = 'summary';
+      show(false);
       render('again');
       return;
     }
@@ -81,7 +107,7 @@ export function createGame(data, stage) {
       'div',
       { class: 'game-case', style: `--venue:${colorOf(d)}` },
       h('p', { class: 'game-count', text: `Delivery ${position + 1} of ${round.length}` }),
-      h('h2', {}, h('span', { class: 'swatch' }), venue.name),
+      h('h2', { text: venue.name }),
       h('dl', { class: 'conditions' },
         h('div', {}, h('dt', { text: 'Ball age' }), h('dd', { text: overs(d.ball_age) })),
         h('div', {}, h('dt', { text: 'Bowler' }), h('dd', { text: armLabel(d.arm) })),

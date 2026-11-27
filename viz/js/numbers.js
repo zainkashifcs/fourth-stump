@@ -5,7 +5,7 @@ import { actionLabel, percent, runs, signedRuns } from './format.js';
 
 // Colours identify venues everywhere on the page; they are assigned by the
 // order of `venues` in the file, not by name.
-const VENUE_COLORS = ['#e8b23a', '#58b8ec', '#bfa0f5', '#7fd6a8', '#f08fb3'];
+const VENUE_COLORS = ['#ff8a1f', '#2fb0ff', '#c07bff', '#3fd6a0', '#ff6fae'];
 export const venueColor = (index) => VENUE_COLORS[index % VENUE_COLORS.length];
 
 const ACTIONS = ['leave', 'play'];
@@ -29,7 +29,7 @@ export function actionTable(d, { chosen } = {}) {
       'tbody',
       {},
       h('tr', {},
-        h('th', { scope: 'row' }, 'Expected value', h('span', { class: 'unit', text: ' runs' })),
+        h('th', { scope: 'row' }, 'Expected value', h('span', { class: 'unit', text: 'runs' })),
         ACTIONS.map((a) => h('td', { class: `figure ${column(a)}`, text: signedRuns(ev[a]) }))),
       h('tr', {},
         h('th', { scope: 'row', text: 'Dismissal' }),

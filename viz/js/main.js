@@ -1,6 +1,7 @@
 // Boot: load the data, build the stage and the two views, switch between them.
 import { h, segmented } from './dom.js';
-import { loadData } from './data.js';
+import { loadData, venueKeys } from './data.js';
+import { loadModels } from './models/load.js';
 import { createStage } from './stage.js';
 import { createCompare } from './compare.js';
 import { createGame } from './game.js';
@@ -22,7 +23,9 @@ function showError(error) {
 
 async function start() {
   const data = await loadData();
-  const stage = createStage(data.meta.constants);
+  const keys = venueKeys(data);
+  const models = await loadModels(['batter', 'bowler', 'slip'], keys);
+  const stage = createStage(data.meta.constants, keys, models);
   const modes = { compare: createCompare(data, stage), game: createGame(data, stage) };
   let current = null;
 
@@ -47,6 +50,8 @@ async function start() {
     onChange: setMode,
   }).el);
   setMode('compare');
+  // For checking an animation by hand: fourthStump.preview('play', 'edged_caught') in the console.
+  window.fourthStump = { preview: modes.compare.preview };
 }
 
 start().catch(showError);

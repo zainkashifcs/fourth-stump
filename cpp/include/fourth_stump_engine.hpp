@@ -356,9 +356,9 @@ inline bool hits_stumps(double x, double z) noexcept {
     return std::abs(x) <= kStumpHalfWidth + kBallRadius && z <= kStumpHeight + kBallRadius;
 }
 
-// An edge carries if, flying on from the bat at reduced speed, it is still above
-// catching height when it reaches the slip cordon. The thinner the edge, the more
-// speed it keeps.
+// An edge carries if, flying on from the bat with its speed along the ground reduced,
+// it is still above catching height when it reaches the slip cordon. The thinner the
+// edge, the more speed it keeps. `gap` is the unsigned size of the gap.
 inline bool edge_carries(const State& bat, double gap) noexcept {
     const double inner = kBatHalfWidth - kEdgeInnerMargin, outer = kBatHalfWidth + kBallRadius;
     const double retention = kEdgeSpeedThick + (kEdgeSpeedThin - kEdgeSpeedThick) * (gap - inner) / (outer - inner);
@@ -366,9 +366,14 @@ inline bool edge_carries(const State& bat, double gap) noexcept {
     return bat.z + bat.vz * t - 0.5 * kGravity * t * t >= kCatchMinHeight;
 }
 
+// `gap` is signed: positive when the ball passes on the off side of where the batter
+// put the bat. Only that outside edge can reach the slip cordon; an inside edge goes
+// to ground or onto the pad.
 inline PlayOutcome classify_play(double gap, const State& bat, bool bowled) noexcept {
-    if (gap < kBatHalfWidth - kEdgeInnerMargin) return PlayOutcome::Middled;
-    if (gap < kBatHalfWidth + kBallRadius) return edge_carries(bat, gap) ? PlayOutcome::EdgedCarried : PlayOutcome::EdgedSafe;
+    const double size = std::abs(gap);
+    if (size < kBatHalfWidth - kEdgeInnerMargin) return PlayOutcome::Middled;
+    if (size < kBatHalfWidth + kBallRadius)
+        return gap > 0.0 && edge_carries(bat, size) ? PlayOutcome::EdgedCarried : PlayOutcome::EdgedSafe;
     return bowled ? PlayOutcome::MissedBowled : PlayOutcome::Missed;
 }
 
@@ -393,7 +398,7 @@ inline DeliveryResult simulate_delivery(const Release& r, double cs, double seam
 
     const bool bowled = hits_stumps(out.stumps.x, out.stumps.z);
     out.leave = bowled ? LeaveOutcome::Bowled : LeaveOutcome::Safe;
-    out.play = classify_play(std::abs(out.bat.x - out.expected_x), out.bat, bowled);
+    out.play = classify_play(out.bat.x - out.expected_x, out.bat, bowled);
     return out;
 }
 
@@ -415,6 +420,9 @@ inline Draws draw(std::uint64_t seed, std::uint64_t index, const Conditions& c) 
 // Simulate every delivery in the batch. Each result is written to its own index and
 // depends only on (seed, index, inputs), so output is bit-identical for any thread
 // count or schedule (ADR-003).
+// Preconditions, not checked here (the Python binding checks them): every release starts
+// above the pitch (z > kBallRadius) and travels down it (vy < 0) faster than any tailwind.
+// A second bounce is not modelled.
 inline void simulate_batch(const ReleaseBatch& in, const Conditions& c, std::uint64_t seed,
                            OutcomeBatch& out) noexcept {
     (void)ziggurat();  // build the tables before the parallel region

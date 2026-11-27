@@ -13,12 +13,11 @@ struct Vec3 {
 // Gravity, quadratic drag and the seam side force, all on air-relative velocity.
 inline Vec3 acceleration(double vx, double vs, double vz, double ks, const Conditions& c) noexcept {
     const double ux = vx - c.wind_x, us = vs + c.wind_y, uz = vz;  // forward wind component is -wind_y
-    const double speed = std::sqrt(ux * ux + us * us + uz * uz);
-    const double h = std::hypot(ux, us);
+    const double h2 = ux * ux + us * us;
+    const double speed = std::sqrt(h2 + uz * uz);
+    const double side = ks * speed * speed / std::sqrt(h2);
     // Side force: horizontal, perpendicular to the air-relative velocity, towards +x.
-    return {-kDragK * speed * ux + ks * speed * speed * us / h,
-            -kDragK * speed * us - ks * speed * speed * ux / h,
-            -kDragK * speed * uz - kGravity};
+    return {-kDragK * speed * ux + side * us, -kDragK * speed * us - side * ux, -kDragK * speed * uz - kGravity};
 }
 
 inline State rk4_step(const State& a, double dt, double ks, const Conditions& c) noexcept {
@@ -56,22 +55,25 @@ inline Path fly(const Release& r, double cs, double seam_deviation, const Condit
     bool got_bat = false;
     for (;;) {
         const State b = rk4_step(a, dt, ks, c);
-        if (!path.bounced && b.z <= kBallRadius && b.vz < 0.0 && b.s < s_stumps) {
-            a = lerp(a, b, (a.z - kBallRadius) / (a.z - b.z));
+        const bool bounces = !path.bounced && b.z <= kBallRadius && b.vz < 0.0;
+        // The part of this step that is ordinary flight: all of it, or up to the bounce.
+        // Planes are checked on that part only, so a plane just before the bounce is not
+        // read off the leg after it.
+        const State end = bounces ? lerp(a, b, (a.z - kBallRadius) / (a.z - b.z)) : b;
+        if (!got_bat && end.s >= s_bat) {
+            path.bat = lerp(a, end, (s_bat - a.s) / (end.s - a.s));
+            got_bat = true;
+        }
+        if (end.s >= s_stumps) {
+            path.stumps = lerp(a, end, (s_stumps - a.s) / (end.s - a.s));
+            return path;
+        }
+        a = end;
+        if (bounces) {
             bounce(a, pitch, seam_deviation);
             path.bounce_out = a;
             path.bounced = true;
-            continue;
         }
-        if (!got_bat && b.s >= s_bat) {
-            path.bat = lerp(a, b, (s_bat - a.s) / (b.s - a.s));
-            got_bat = true;
-        }
-        if (b.s >= s_stumps) {
-            path.stumps = lerp(a, b, (s_stumps - a.s) / (b.s - a.s));
-            return path;
-        }
-        a = b;
     }
 }
 

@@ -162,6 +162,14 @@ TEST_CASE("the gap sorts a played delivery into middled, edged or play-and-miss"
     CHECK(classify_play(0.091, rising, true) == PlayOutcome::MissedBowled);
 }
 
+TEST_CASE("an inside edge never reaches the slip cordon") {
+    const State rising{0, 0, 0.8, 0, 32.0, 6.0, 0};
+    REQUIRE(classify_play(+0.060, rising, false) == PlayOutcome::EdgedCarried);
+    CHECK(classify_play(-0.060, rising, false) == PlayOutcome::EdgedSafe);
+    CHECK(classify_play(-0.020, rising, false) == PlayOutcome::Middled);
+    CHECK(classify_play(-0.095, rising, true) == PlayOutcome::MissedBowled);
+}
+
 TEST_CASE("a thin edge carries further than a thick one") {
     // Found by bisection on height: a state from which the thin edge carries and the thick one does not.
     const State bat{0, 0, 0.55, 0, 31.0, 2.0, 0};

@@ -10,6 +10,8 @@ The original brief called for scraping ball-by-ball Test commentary for line, le
 - Cordon catches are not labelled. Where the fielder of a `caught` dismissal can be identified as the wicketkeeper, that sharpens the cordon rate; otherwise all catches are an upper bound and the README says so.
 - The downloader caches the archive on disk, and a small pre-aggregated calibration dataset is committed so everything runs offline.
 - Commentary parsing is cut. It returns only if commentary text is obtained legitimately.
+- "Perth" pools two grounds: 13 Tests at the WACA and 6 at Perth Stadium. Perth Stadium alone has too few new-ball deliveries to fit. The pitches differ, so Perth's fitted values describe neither ground exactly.
+- Only men's Tests are used (905 of the 929 matches in the archive).
 
 ## Licence
 

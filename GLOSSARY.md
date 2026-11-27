@@ -165,7 +165,7 @@ The largest measured distance between the kernel's trajectory and the reference 
 _Avoid_: Tolerance, accuracy
 
 **Envelope**:
-The stated ranges of delivery speed, swing coefficient and wind within which the error bound is claimed. Outside it the kernel promises nothing.
+The stated ranges of delivery speed, swing coefficient, wind, release position, length and line within which the error bound is claimed. Outside it the kernel promises nothing.
 _Avoid_: Valid range, domain, operating range
 
 **Flight leg**:

@@ -79,10 +79,11 @@ def game_delivery(i: int, rng: np.random.Generator) -> dict:
     c = conditions_for(venue, ball_age, end, arm)
     release = release_for(arm, line=rng.normal(LINE, 0.15), length=rng.normal(LENGTH, 1.0), speed=rng.normal(SPEED, 1.5))
     cs = c.cs_mean + c.sigma_swing * rng.standard_normal()
-    actual = trace(release, cs, c.sigma_seam * rng.standard_normal(), c)
-    # What the batter can know at the bounce: this delivery's swing, not its seam deviation.
+    # What the player can know at the bounce: this delivery's swing, not its seam deviation.
+    # The outcome shown and the expected values both use a batter who has read that swing.
     seen = conditions_for(venue, ball_age, end, arm)
     seen.cs_mean, seen.sigma_swing = cs, 0.0
+    actual = trace(release, cs, c.sigma_seam * rng.standard_normal(), seen)
     # An edge that carries is caught with the venue catch conversion; otherwise it is safe.
     caught = rng.random() < catch_conversion_for(venue)
     outcome_play = ("middled", "edged_safe", "edged_caught" if caught else "edged_safe", "missed", "missed_bowled")[actual["play"]]

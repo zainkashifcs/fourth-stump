@@ -2,6 +2,7 @@
 import math
 
 import numpy as np
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -36,7 +37,8 @@ def test_a_different_seed_changes_the_outcomes():
 
 def test_outcome_codes_follow_the_geometry():
     out = run_batch(100_000)
-    gap = np.abs(out["bat_x"] - out["expected_x"])
+    signed_gap = out["bat_x"] - out["expected_x"]
+    gap = np.abs(signed_gap)
     hits = (np.abs(out["stumps_x"]) <= K["stump_half_width"] + K["ball_radius"]) & (
         out["stumps_z"] <= K["stump_height"] + K["ball_radius"])
     inner = K["bat_half_width"] - K["edge_inner_margin"]
@@ -45,6 +47,7 @@ def test_outcome_codes_follow_the_geometry():
     assert np.array_equal(out["play"] == 0, gap < inner)
     assert np.array_equal(np.isin(out["play"], (1, 2)), (gap >= inner) & (gap < outer))
     assert np.array_equal(out["play"] == 4, (gap >= outer) & hits)
+    assert not np.any((out["play"] == 2) & (signed_gap < 0)), "an inside edge reached the cordon"
 
 
 def test_summary_probabilities_cover_every_delivery():
@@ -70,9 +73,10 @@ def test_the_other_bowling_end_reverses_the_slope_and_the_wind():
 
 envelope_delivery = st.fixed_dictionaries({
     "speed": st.floats(K["min_speed"], K["max_speed"]),
-    "length": st.floats(1.0, 10.0),
+    "length": st.floats(K["min_length"], K["max_length"]),
     "line": st.floats(-0.2, 0.6),
-    "release_x": st.sampled_from([0.45, -0.45]),
+    "release_x": st.floats(-K["max_release_x"], K["max_release_x"]),
+    "release_z": st.floats(K["min_release_z"], K["max_release_z"]),
     "cs": st.floats(-K["max_swing"], K["max_swing"]),
     "seam": st.floats(-0.03, 0.03),
     "e_z": st.floats(0.46, 0.65),
@@ -86,10 +90,10 @@ def build(d):
     c = make_conditions(cs_mean=d["cs"], e_z=d["e_z"], tilt=d["tilt"],
                         wind_x=d["wind"] * math.cos(d["heading"]), wind_y=d["wind"] * math.sin(d["heading"]))
     bounce_x = d["line"] + (d["release_x"] - d["line"]) * d["length"] / c.release_y
-    return fs.aim(d["release_x"], 2.10, d["speed"], bounce_x, d["length"], c), c
+    return fs.aim(d["release_x"], d["release_z"], d["speed"], bounce_x, d["length"], c), c
 
 
-@settings(max_examples=400, deadline=None)
+@settings(max_examples=1000, deadline=None)
 @given(envelope_delivery)
 def test_the_kernel_stays_inside_its_published_bound_anywhere_in_the_envelope(d):
     release, c = build(d)
@@ -110,4 +114,25 @@ def test_mirroring_a_delivery_mirrors_its_arrival(d):
     for plane in ("bat", "stumps"):
         assert math.isclose(a[plane][0], -b[plane][0], abs_tol=1e-9)
         assert math.isclose(a[plane][1], b[plane][1], abs_tol=1e-9)
-    assert a["leave"] == b["leave"] and a["play"] == b["play"]
+    # The batter is right-handed in both, so an outside edge mirrors to an inside edge:
+    # only the edged outcomes may differ.
+    edged = {fs.PLAY_OUTCOMES.index("edged_safe"), fs.PLAY_OUTCOMES.index("edged_carried")}
+    assert a["leave"] == b["leave"]
+    assert a["play"] == b["play"] or {a["play"], b["play"]} <= edged
+
+
+@pytest.mark.parametrize("release, message", [
+    ([0.45, 0.01, 0.0, -37.5, -2.0], "above the pitch"),
+    ([0.45, 2.10, 0.0, 37.5, -2.0], "down the pitch"),
+    ([0.45, 2.10, float("nan"), -37.5, -2.0], "finite"),
+])
+def test_an_impossible_release_is_rejected_at_the_binding(release, message):
+    with pytest.raises(ValueError, match=message):
+        fs.trace(release, 0.1, 0.0, fs.Conditions())
+    with pytest.raises(ValueError, match=message):
+        fs.simulate(*[np.array([v]) for v in release], conditions=fs.Conditions(), seed=1)
+
+
+def test_the_thread_count_does_not_leak_between_calls():
+    run_batch(threads=1)
+    assert run_batch(threads=0)["bat_x"].tobytes() == run_batch(threads=16)["bat_x"].tobytes()

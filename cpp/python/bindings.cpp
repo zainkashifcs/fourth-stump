@@ -1,5 +1,6 @@
 // Python binding: a thin caller of the engine header (ADR-012). NumPy arrays in and out.
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -19,7 +20,20 @@ namespace {
 std::span<const double> view(const Array& a) { return {a.data(), static_cast<std::size_t>(a.size())}; }
 std::span<double> view(Array& a) { return {a.mutable_data(), static_cast<std::size_t>(a.size())}; }
 
-Release release_of(const std::array<double, 5>& r) { return {r[0], r[1], r[2], r[3], r[4]}; }
+// The engine does not validate its inputs; this is the trust boundary.
+void check_release(const Release& r, const Conditions& c) {
+    const bool finite = std::isfinite(r.x) && std::isfinite(r.z) && std::isfinite(r.vx) && std::isfinite(r.vy) &&
+                        std::isfinite(r.vz);
+    if (!finite) throw py::value_error("release values must be finite");
+    if (r.z <= kBallRadius) throw py::value_error("release must start above the pitch");
+    if (-r.vy <= std::abs(c.wind_y) + 1.0) throw py::value_error("release must travel down the pitch (vy < 0) faster than the wind");
+}
+
+Release release_of(const std::array<double, 5>& r, const Conditions& c) {
+    const Release release{r[0], r[1], r[2], r[3], r[4]};
+    check_release(release, c);
+    return release;
+}
 
 py::dict sample(const ReleaseSpec& spec, const Conditions& c, std::size_t n, std::uint64_t seed) {
     Array x(n), z(n), vx(n), vy(n), vz(n);
@@ -34,6 +48,7 @@ py::dict simulate(const Array& x, const Array& z, const Array& vx, const Array& 
     const auto n = static_cast<std::size_t>(x.size());
     for (const Array* a : {&z, &vx, &vy, &vz})
         if (static_cast<std::size_t>(a->size()) != n) throw py::value_error("release arrays must have equal length");
+    for (std::size_t i = 0; i < n; ++i) check_release({x.at(i), z.at(i), vx.at(i), vy.at(i), vz.at(i)}, c);
     Array bat_x(n), bat_z(n), stumps_x(n), stumps_z(n), expected_x(n), bounce_x(n), bounce_y(n);
     Bytes leave(n), play(n);
     OutcomeBatch out{view(bat_x), view(bat_z), view(stumps_x), view(stumps_z), view(expected_x), view(bounce_x),
@@ -42,7 +57,7 @@ py::dict simulate(const Array& x, const Array& z, const Array& vx, const Array& 
     {
         py::gil_scoped_release release;
 #ifdef _OPENMP
-        if (threads > 0) omp_set_num_threads(threads);
+        omp_set_num_threads(threads > 0 ? threads : omp_get_num_procs());  // 0 means every core, on every call
 #else
         (void)threads;
 #endif
@@ -58,7 +73,8 @@ py::dict simulate(const Array& x, const Array& z, const Array& vx, const Array& 
 // One delivery with explicit swing coefficient and seam deviation: its outcome and
 // `points` positions along the path (x, y, z, t), with the bounce point spliced in.
 py::dict trace(const std::array<double, 5>& release, double cs, double seam, const Conditions& c, int points) {
-    const Release r = release_of(release);
+    if (points < 2) throw py::value_error("points must be at least 2");
+    const Release r = release_of(release, c);
     const Flight f = make_flight(release_state(r), cs, seam, c, pitch_of(c));
     std::vector<double> stations;
     for (int i = 0; i < points; ++i) stations.push_back(c.release_y * i / (points - 1));
@@ -89,7 +105,8 @@ py::dict trace(const std::array<double, 5>& release, double cs, double seam, con
 }
 
 py::dict reference_arrival(const std::array<double, 5>& release, double cs, double seam, const Conditions& c, double dt) {
-    const reference::Path p = reference::fly(release_of(release), cs, seam, c, dt);
+    if (!(dt > 0.0)) throw py::value_error("dt must be positive");
+    const reference::Path p = reference::fly(release_of(release, c), cs, seam, c, dt);
     py::dict d;
     d["bat"] = py::make_tuple(p.bat.x, p.bat.z);
     d["stumps"] = py::make_tuple(p.stumps.x, p.stumps.z);
@@ -144,6 +161,8 @@ PYBIND11_MODULE(_engine, m) {
     k["aero_k"] = kAeroK, k["pace_retention"] = kPaceRetention, k["reaction_time"] = kReactionTime;
     k["min_speed"] = envelope::kMinSpeed, k["max_speed"] = envelope::kMaxSpeed, k["max_swing"] = envelope::kMaxSwing;
     k["max_wind"] = envelope::kMaxWind, k["published_bound"] = envelope::kPublishedBound;
+    k["max_release_x"] = envelope::kMaxReleaseX, k["min_release_z"] = envelope::kMinReleaseZ;
+    k["max_release_z"] = envelope::kMaxReleaseZ, k["min_length"] = envelope::kMinLength, k["max_length"] = envelope::kMaxLength;
     m.attr("CONSTANTS") = k;
     m.attr("LEAVE_OUTCOMES") = std::vector<std::string>{"safe", "bowled"};
     m.attr("PLAY_OUTCOMES") = std::vector<std::string>{"middled", "edged_safe", "edged_carried", "missed", "missed_bowled"};

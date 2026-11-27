@@ -13,5 +13,6 @@
 - Per-delivery streams are required, not just convenient: Ziggurat sampling rejects, so deliveries consume a varying number of draws and a shared stream would drift.
 - Reduction order is fixed. Per-delivery outcomes are written to their own index; counts are integers; any floating-point total is summed in an order that does not depend on the thread count.
 - `-ffast-math` and any flag that implies it are banned from every build.
+- Every build uses `-ffp-contract=off`. With `-march=native` the compiler may otherwise fuse a multiply and an add differently in different callers of the same inline kernel, and one delivery could then give different bits in a batch and in a single trace.
 - A test asserts bit-identical batch output on 1, 4 and 16 threads. Linux CI compares against stored results within the stated tolerance, not bit for bit.
 - The README states the boundary in these words: bit-reproducible across thread counts, statistically reproducible across platforms.

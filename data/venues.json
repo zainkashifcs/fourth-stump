@@ -13,7 +13,7 @@
     "wind": [1.0, 0.0]
   },
   "perth": {
-    "name": "Perth Stadium",
+    "name": "Perth",
     "ball": "Kookaburra",
     "ends": ["Members End", "Langer Stand End"],
     "cs0": 0.12,

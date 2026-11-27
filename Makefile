@@ -3,8 +3,9 @@
 # Every compiler flag behind every benchmark number is in this file.
 
 CXX      ?= g++
-CXXFLAGS := -std=c++20 -O3 -march=native -fopenmp -Wall -Wextra -Wpedantic -Icpp/include
-# -ffast-math is banned (ADR-003).
+# -ffast-math is banned (ADR-003). -ffp-contract=off stops the compiler fusing multiply-adds
+# differently in different callers, so a delivery gives the same bits wherever it is evaluated.
+CXXFLAGS := -std=c++20 -O3 -march=native -ffp-contract=off -fopenmp -Wall -Wextra -Wpedantic -Icpp/include
 WERROR   := -Werror
 BUILD    := build
 PY       := uv run python

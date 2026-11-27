@@ -4,6 +4,25 @@ Quadratic drag has no exact closed-form solution in three dimensions, so the ker
 
 Swing is parabolic in distance because drag and the seam side force both scale with `v²`: the sideways acceleration and the square of the forward speed fall together, so the curvature per metre travelled stays constant however much the ball slows. This is the result the README leads its derivation with.
 
+## Measured bound, 2026-11-27
+
+The envelope as built, each range swept by the error-bound tool and searched at random by a property-based test:
+
+| Quantity | Range |
+|---|---|
+| Speed at release | 120–150 km/h |
+| Swing coefficient | up to 0.30 either way |
+| Wind | up to 5 m/s from any horizontal direction |
+| Release position | up to 1.0 m either side of the stumps, 1.9–2.4 m high |
+| Length | from a full toss to 10 m from the batter's stumps |
+| Line | from 0.2 m down the leg side to 0.6 m outside off |
+
+The worst error found is 5.3 mm (largest swing, with wind, on a full toss, where one flight leg runs the whole pitch). The published bound is 8 mm, which leaves room for points the grid and the random search did not hit. At a swing coefficient of 0.10 the worst error is 1.5 mm.
+
+The kernel carries second-order corrections to the flat-trajectory form: means of products of the path's sideways and vertical slopes over a leg, weighted towards the start of the leg where they feed a position. They add no transcendental call. Without them the worst error was about 24 mm.
+
+A first version of the sweep fixed the release position and had no full tosses, and reported 4.3 mm against a 5 mm bound. A review found deliveries inside the stated envelope at 5.1 mm, so the sweep was widened and the bound republished. The envelope is whatever the sweep covers, no more.
+
 ## Considered options
 
 - **Constant acceleration per flight leg** (forces frozen at their starting values): rejected. Measured against RK4 at 120–150 km/h it was 53–87 mm out in height and up to 112 mm laterally over an 18 m leg, against a corridor 100 mm wide.

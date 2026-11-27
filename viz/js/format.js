@@ -2,8 +2,13 @@
 
 const MINUS = '−';
 
+// One decimal from 1% up; below that, enough decimals that a small non-zero
+// probability never reads as zero.
 export function percent(p) {
-  return `${(p * 100).toFixed(1)}%`;
+  const value = p * 100;
+  if (value === 0 || value >= 0.95) return `${value.toFixed(1)}%`;
+  const digits = [2, 3].find((d) => Number(value.toFixed(d)) > 0);
+  return digits ? `${value.toFixed(digits)}%` : '<0.001%';
 }
 
 export function signedRuns(value) {

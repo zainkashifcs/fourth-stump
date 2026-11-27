@@ -8,6 +8,14 @@ import { validate, findScenario, venueKeys } from '../js/data.js';
 
 test('formats probabilities and expected values', () => {
   assert.equal(percent(0.05357), '5.4%');
+  assert.equal(percent(0), '0.0%');
+  assert.equal(percent(1), '100.0%');
+  assert.equal(percent(0.0027), '0.27%');
+  assert.equal(percent(0.00019), '0.02%');
+  assert.equal(percent(0.00002), '0.002%');
+  assert.equal(percent(0.000001), '<0.001%');
+  assert.equal(percent(0.0096), '1.0%');
+  assert.equal(signedRuns(-17.1752), '−17.18');
   assert.equal(signedRuns(-1.6072), '−1.61');
   assert.equal(signedRuns(0.5), '+0.50');
   assert.equal(signedRuns(-0), '0.00');

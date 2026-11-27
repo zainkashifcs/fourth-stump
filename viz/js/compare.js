@@ -100,7 +100,7 @@ export function createCompare(data, stage) {
       h('p', { text: 'Expected value is expected runs minus wicket cost times the probability of dismissal.' }),
       meta.wicket_cost_source === 'placeholder'
         && h('p', { class: 'note-warn', text: 'The wicket cost is a placeholder, not yet read from the run-expectancy table. The expected values will move when it is.' }),
-      h('p', { class: 'fine', text: `Each estimate uses ${Number(meta.deliveries_per_estimate).toLocaleString('en-GB')} simulated deliveries, with ${meta.wickets_lost} wickets lost and ${meta.runs_middled} runs for a middled delivery. The ball in the 3D views is drawn larger than life. Data generated ${meta.generated}.` })),
+      h('p', { class: 'fine', text: `Each estimate uses ${Number(meta.deliveries_per_estimate).toLocaleString('en-GB')} simulated deliveries, with ${meta.wickets_lost} wickets lost and ${Number(meta.runs_middled).toFixed(2)} runs for a middled delivery. The ball in the 3D views is drawn larger than life. Data generated ${meta.generated}.` })),
   );
 
   const grid = h('div', { class: 'compare-grid', style: `--venues:${keys.length}` }, columns.map((c) => c.el), aside);

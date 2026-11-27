@@ -15,7 +15,7 @@ The surface normal is vertical at Perth and Newlands. At Lord's it is tilted by 
 - The tilt's sign depends on the bowling end. From the Pavilion End the ball moves down the slope into a right-hander; from the Nursery End it moves away ([The Athletic, 10 July 2025](https://www.nytimes.com/athletic/6482874/2025/07/10/lords-cricket-ground-slope-england-india/)).
 - Pace retention is a fixed constant from published measurements and is never calibrated, because commentary data cannot separate it from `e_z`.
 - The kernel and the reference trajectory use the same bounce map with the same random draw. The bounce adds no error of its own; it only carries forward the first flight leg's error in where the ball lands.
-- Estimated size of the slope effect, to be confirmed by the engine: 2–3 cm of sideways movement at the stumps for a good-length delivery.
+- Size of the slope effect, measured with the engine: 4.3 cm of sideways movement at the stumps for a good-length delivery (3.2 cm for a fuller one, 5.7 cm for a shorter one). The estimate made before the engine existed was 2–3 cm.
 
 ## Verified constants (2026-11-27)
 

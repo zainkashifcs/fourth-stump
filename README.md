@@ -149,16 +149,24 @@ What the calibration does and does not show:
 
 ## The visualisation
 
-A static Three.js page with procedural models, reading trajectories precomputed by the engine.
+A static Three.js page styled as a retro Test-match broadcast, reading trajectories precomputed by the engine. The flat-shaded low-poly models (a batter in whites with three poses, a bowler in his delivery stride, a slip, the Lord's Pavilion, the WACA scoreboard, and Table Mountain with Devil's Peak) are built by the Blender scripts in `viz/blender/` and exported as glTF to `viz/assets/`.
 
 ```
 cd viz && python -m http.server 8000     # then open http://localhost:8000/
 ```
 
-- **Compare venues.** The same release at the three grounds, with a ball-age slider, a bowler-arm toggle and a bowling-end toggle. From the Pavilion End at Lord's the slope takes the ball into a right-hander; from the Nursery End, away.
+- **Compare venues.** The same release at the three grounds, with a ball-age slider, a bowler-arm toggle and a bowling-end toggle. "Bowl again" bowls one sampled delivery per ground and plays its outcome: middled, edged, bowled, left alone or play-and-miss. From the Pavilion End at Lord's the slope takes the ball into a right-hander; from the Nursery End, away.
 - **Test your eye.** The path after the bounce is hidden. Choose leave or play, then see the true path, the outcome and the expected value of both actions.
 
 ![Test Your Eye](viz/screenshots/game.png)
+
+![Bowled](viz/screenshots/bowled.png)
+
+The flight up to the bat is the engine's trajectory. What the ball, bat and stumps do after contact is illustration, not simulation. The ball is drawn larger than life.
+
+```
+"<path to>/blender" --background --python viz/blender/build_all.py     # rebuild the models (Blender 5.3)
+```
 
 ## Build and test
 
@@ -175,7 +183,7 @@ uv run python -m calibrator.run_expectancy
 uv run python -m calibrator.calibrate    # about 20 minutes
 ```
 
-Tests: 25 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 5 for the page's logic. All run offline.
+Tests: 25 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 7 for the page's logic. All run offline.
 
 | Path | Contents |
 |---|---|
@@ -212,4 +220,4 @@ The paper figures were read from abstract and index pages, not the full texts. T
 
 ## Third-party code
 
-[Catch2](https://github.com/catchorg/Catch2) 3.7.1 (BSL-1.0), [pybind11](https://github.com/pybind/pybind11) (BSD), [Three.js](https://threejs.org/) 0.170.0 (MIT) and the Besley typeface (OFL), each vendored or installed with its licence.
+[Catch2](https://github.com/catchorg/Catch2) 3.7.1 (BSL-1.0), [pybind11](https://github.com/pybind/pybind11) (BSD), [Three.js](https://threejs.org/) 0.170.0 (MIT) and the VT323 typeface (OFL), each vendored or installed with its licence. The 3D models are this project's own, built with [Blender](https://www.blender.org/).

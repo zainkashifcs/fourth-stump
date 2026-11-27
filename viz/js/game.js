@@ -1,6 +1,6 @@
 // "Test Your Eye": watch a delivery as far as the bounce, choose leave or
 // play, then see the true path, the outcome and the expected values.
-import { h } from './dom.js';
+import { h, remembered, toggle } from './dom.js';
 import { venueKeys } from './data.js';
 import {
   actionLabel, armLabel, heightAtStumps, lineAtStumps, outcomeLabel, overs, signedRuns,
@@ -28,6 +28,8 @@ export function createGame(data, stage) {
 
   const viewport = h('div', { class: 'viewport game-viewport', role: 'img' });
   const caption = createCaption(viewport);
+  const skipRunUp = remembered('fourth-stump:skip-run-up', false);
+  const skipToggle = toggle({ label: 'Skip run-up', checked: skipRunUp.get(), onChange: (on) => skipRunUp.set(on) });
   const host = h('div', { class: 'game-stage' }, viewport);
   const panel = h('div', { class: 'game-panel' });
   const live = h('div', { class: 'game-live', 'aria-live': 'polite' }); // kept across renders so changes are announced
@@ -59,7 +61,9 @@ export function createGame(data, stage) {
       bounceIndex: d.bounce_index,
       pauseIndex: cutIndex(d),
       color: colorOf(d),
+      runUp: !skipRunUp.get(),
       onEvent: () => caption.show(ending),
+      onCut: (tag) => caption.setTag(tag),
     });
     if (phase === 'revealed') {
       setEnding(d, score.choices[score.choices.length - 1].action);
@@ -118,7 +122,7 @@ export function createGame(data, stage) {
 
   function choiceButtons(d) {
     const prompt = d.bounce_index >= 0
-      ? 'The ball has bounced. Leave it or play it?'
+      ? 'Watch it to the bounce. Leave it or play it?'
       : 'This one is a full toss, stopped in flight. Leave it or play it?';
     const button = (action, key) => h(
       'button',
@@ -209,7 +213,7 @@ export function createGame(data, stage) {
       ? 'The delivery seen from behind the stumps. Its path after the bounce is hidden until you choose.'
       : 'The delivery seen from behind the stumps, with its full path to the wicket.');
     live.replaceChildren(phase === 'choose' ? choiceButtons(d) : reveal(d));
-    panel.replaceChildren(...(phase === 'summary' ? [summary()] : [conditions(d), live, scoreline()]));
+    panel.replaceChildren(...(phase === 'summary' ? [summary()] : [conditions(d), live, scoreline(), skipToggle]));
     if (focus) panel.querySelector(`[data-focus="${focus}"]`)?.focus();
   }
 

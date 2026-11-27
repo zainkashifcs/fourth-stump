@@ -1,22 +1,25 @@
 // One delivery as a piece of animation: the Hawk-Eye style tube, its drop
 // curtain and bounce ring, and a pure function of time that poses the shared
-// actors (ball, batter, wicket). `apply(t)` can be called for any t in any
-// order, which is what lets three panels share one batter and one ball, and
-// lets reduced motion jump straight to the last frame.
+// actors (ball, bowler, batter, wicket). `apply(t)` can be called for any t in
+// any order, which is what lets three panels share one batter and one ball,
+// and lets reduced motion jump straight to the last frame.
+//
+// The clock starts `lead` seconds before the ball leaves the hand: the length
+// of the run-up when one is shown, otherwise zero.
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { pointToScene } from './coords.js';
 import { WATCHING } from './outcomes.js';
+import { cuesFor } from './audio.js';
 
 const SAMPLES = 120;
 const RADIAL = 6;
 const TUBE_RADIUS = 0.04;
 const FLIGHT_SPEED = 13; // metres of path per second: slow motion, so the eye can follow
-const SWING = 0.45; // seconds the batter takes to get into position
-const BREAK = 0.9; // seconds for the wicket to finish breaking
-const TAIL = { dead: 1.3, 'edge-short': 1.4, 'edge-carry': 0.7, stumps: 1.2, through: 0.55 };
+const CATCH = 0.42; // seconds an edge takes to carry to slip
+const TAIL = { dead: 1.3, 'edge-short': 1.4, 'edge-carry': 1.5, stumps: 1.2, through: 0.55 }; // a dismissal leaves time for the appeal
 
 const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
 const easeOut = (q) => 1 - (1 - q) * (1 - q);
@@ -111,9 +114,10 @@ function buildRing(position, color) {
   return ring;
 }
 
-// spec: { path, bounceIndex, pauseIndex?, color, fan?, mean? }
+// spec: { path, bounceIndex, arm, pauseIndex?, lead?, color, fan?, mean? }
 export function createPlay(spec, constants, catchPoint) {
-  const { path, bounceIndex, color } = spec;
+  const { path, bounceIndex, color, arm } = spec;
+  const lead = spec.lead ?? 0;
   const { line, length, bounceFraction } = smoothPath(path, bounceIndex);
   const flight = length / FLIGHT_SPEED;
   const ground = constants.ball_radius;
@@ -124,7 +128,6 @@ export function createPlay(spec, constants, catchPoint) {
   const batFraction = (found < 0 ? SAMPLES : found) / SAMPLES;
   const batTime = batFraction * flight;
   const lineAtBat = line.getPoint(batFraction).x;
-  const endX = line.getPoint(1).x;
   const pauseTime = spec.pauseIndex == null ? null
     : (spec.pauseIndex === bounceIndex && bounceFraction != null ? bounceFraction : fractionAtIndex(path, spec.pauseIndex)) * flight;
 
@@ -173,7 +176,7 @@ export function createPlay(spec, constants, catchPoint) {
       p.z = THREE.MathUtils.lerp(from.z, -0.9, q) + 0.5 * skid;
       p.y = THREE.MathUtils.lerp(from.y, ground, q * q) + hop((tau - 0.42) / 0.3, 0.12);
     } else if (animation.ball === 'edge-carry') {
-      const q = clamp01(tau / 0.42);
+      const q = clamp01(tau / CATCH);
       p.lerp(catchPoint, q);
       p.y += hop(q, 0.1);
     } else if (animation.ball === 'stumps') {
@@ -191,33 +194,56 @@ export function createPlay(spec, constants, catchPoint) {
     ball.group.visible = scale > 0.01;
   }
 
-  // actors: { ball, batter, wicket }
-  function apply(t, actors) {
+  // actors: { ball, bowler, batter, wicket }. clock: seconds that always run, for the idle loop.
+  function apply(time, actors, clock = time) {
+    const t = time - lead; // seconds since the ball left the hand
     const eventTime = eventFraction * flight;
-    const f = Math.min(t / flight, eventFraction);
+    const f = THREE.MathUtils.clamp(t / flight, 0, eventFraction);
     const drawn = Math.floor(f * SAMPLES);
     tube.geometry.setDrawRange(0, drawn * RADIAL * 6);
     curtain.geometry.setDrawRange(0, drawn * 6);
+    extras.forEach((extra) => { extra.visible = t >= 0; }); // nothing is tracked until the ball is bowled
     if (ring) {
       const since = t - bounceFraction * flight;
       ring.visible = since >= 0;
       ring.scale.setScalar(1 + 0.9 * Math.max(0, 1 - since / 0.35));
     }
 
+    const caught = animation.ball === 'edge-carry';
+    actors.bowler.pose({
+      point: path[0],
+      arm,
+      sinceRelease: t,
+      runUp: lead > 0,
+      appealAt: animation.flash ? eventTime + (caught ? CATCH : 0) : null,
+    });
+
     const { ball } = actors;
     ball.group.visible = true;
     ball.group.scale.setScalar(1);
-    if (t <= eventTime) line.getPoint(f, ball.group.position);
-    else afterEvent(t - eventTime, ball);
-    ball.group.position.y += ball.lift;
-    ball.spin.rotation.x = -t * 16;
+    if (t < 0) {
+      actors.bowler.handPosition(ball.group.position); // still in the hand
+    } else {
+      if (t <= eventTime) line.getPoint(f, ball.group.position);
+      else afterEvent(t - eventTime, ball);
+      ball.group.position.y += ball.lift;
+    }
+    ball.spin.rotation.x = -Math.max(t, 0) * 16;
 
     // the batter never moves before the pause, so the game gives nothing away
-    const start = Math.max(batTime - SWING, pauseTime ?? 0);
-    const end = Math.max(start + 0.12, batTime - 0.03);
-    const amount = animation.batter === 'stance' ? 0 : smooth(clamp01((t - start) / (end - start)));
-    actors.batter.setPose(animation.batter, amount, lineAtBat + animation.bat);
-    actors.wicket.setBreak(animation.ball === 'stumps' ? (t - eventTime) / BREAK : 0, endX);
+    const shot = animation.batter === 'stance' ? null : animation.ball.startsWith('edge') ? 'edge' : animation.batter;
+    const earliest = pauseTime == null ? -Infinity : pauseTime - batTime;
+    actors.batter.pose(clock, shot, t - batTime, earliest, lineAtBat + animation.bat);
+    actors.wicket.pose(animation.ball === 'stumps' ? t - eventTime : null);
+  }
+
+  // The sounds this delivery makes and when, on the same clock as apply().
+  function cues() {
+    const eventTime = lead + eventFraction * flight;
+    return [
+      ...(bounceFraction == null ? [] : [{ sound: 'bounce', time: lead + bounceFraction * flight }]),
+      ...cuesFor(animation.name).map(({ sound, at }) => ({ sound, time: eventTime + at })),
+    ];
   }
 
   function dispose() {
@@ -232,9 +258,13 @@ export function createPlay(spec, constants, catchPoint) {
     group,
     apply,
     setOutcome,
+    cues,
     dispose,
-    pauseTime,
-    get eventTime() { return eventFraction * flight; },
-    get duration() { return eventFraction * flight + TAIL[animation.ball]; },
+    lead,
+    pauseTime: pauseTime == null ? null : lead + pauseTime,
+    impact: from, // where the ball meets the bat or the stumps, in scene coordinates
+    get decided() { return animation !== WATCHING; },
+    get eventTime() { return lead + eventFraction * flight; },
+    get duration() { return lead + eventFraction * flight + TAIL[animation.ball]; },
   };
 }

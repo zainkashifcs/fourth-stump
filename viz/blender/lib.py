@@ -1,5 +1,6 @@
-"""Shared helpers for the model scripts: flat-colour materials, a low-poly mesh
-builder, and the glTF export. Written for Blender 5.3, run headless.
+"""Shared helpers for the model scripts: pixel-art textures, a low-poly mesh
+builder that maps them, rigid-skinned armatures with baked clips, and the glTF
+export. Written for Blender 5.3, run headless.
 
 Units are metres. Blender is Z-up; the exporter converts to glTF's Y-up, which
 turns Blender (x, y, z) into (x, z, -y): exactly the page's mapping from data
@@ -7,14 +8,27 @@ axes to scene axes (viz/js/coords.js).
 """
 import json
 import struct
+import tempfile
+from pathlib import Path
 
 import bmesh
 import bpy
-from mathutils import Matrix
+import numpy as np
+from mathutils import Matrix, Vector
+
+FPS = 30
+PANELS = ("front", "back", "side", "cap")
+_materials = {}  # texture name -> material, for the scene being built
 
 
 def reset():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+    """Empties the file. Preferences and add-ons are left alone, so the build
+    also runs inside a live Blender."""
+    for blocks in (bpy.data.objects, bpy.data.meshes, bpy.data.armatures, bpy.data.materials, bpy.data.images, bpy.data.actions):
+        for block in list(blocks):
+            blocks.remove(block)
+    bpy.context.scene.render.fps = FPS
+    _materials.clear()
 
 
 def link(obj, parent=None):
@@ -29,102 +43,252 @@ def empty(name, parent=None):
     return link(bpy.data.objects.new(name, None), parent)
 
 
-def _linear(channel):
-    c = channel / 255
-    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+# Textures -------------------------------------------------------------------------
 
+def _material(name, pixels):
+    """An unlit-looking material whose base colour is `pixels` (rows from the top,
+    sRGB bytes), sampled without filtering. Colours are cut to five bits a channel,
+    as on a PlayStation."""
+    if name in _materials:
+        return _materials[name]
+    height, width = pixels.shape[:2]
+    rgba = np.ones((height, width, 4), np.float32)
+    rgba[..., :3] = (np.clip(pixels, 0, 255).astype(np.uint8)[::-1] >> 3 << 3) / 255  # Blender stores rows from the bottom
+    image = bpy.data.images.new(name, width, height, alpha=False)
+    image.pixels.foreach_set(rgba.ravel())
+    image.filepath_raw = str(Path(tempfile.gettempdir()) / f"fourth_stump_{name}.png")
+    image.file_format = "PNG"
+    image.save()  # the exporter embeds the saved file
 
-def material(color):
-    """A Principled BSDF with a flat base colour, from an sRGB 0xRRGGBB value."""
-    name = f"flat_{color:06x}"
-    mat = bpy.data.materials.get(name)
-    if mat is None:
-        mat = bpy.data.materials.new(name)
-        if mat.node_tree is None:  # Blender 5 gives every material a node tree already
-            mat.use_nodes = True
-        bsdf = next(n for n in mat.node_tree.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled")
-        rgb = [_linear((color >> shift) & 255) for shift in (16, 8, 0)]
-        bsdf.inputs["Base Color"].default_value = (*rgb, 1)
-        bsdf.inputs["Roughness"].default_value = 1
-        bsdf.inputs["Metallic"].default_value = 0
+    mat = bpy.data.materials.new(name)
+    if mat.node_tree is None:  # Blender 5 gives every material a node tree already
+        mat.use_nodes = True
+    bsdf = next(n for n in mat.node_tree.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled")
+    bsdf.inputs["Roughness"].default_value = 1
+    bsdf.inputs["Metallic"].default_value = 0
+    texture = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    texture.image = image
+    texture.interpolation = "Closest"
+    mat.node_tree.links.new(texture.outputs["Color"], bsdf.inputs["Base Color"])
+    _materials[name] = mat
     return mat
 
 
+class Atlas:
+    """One square texture packed from named tiles. A tile has up to four panels
+    (front, back, side, cap); a primitive stretches each of its faces over the
+    panel its normal picks."""
+
+    def __init__(self, name, size=256):
+        self.name, self.size = name, size
+        self.pixels = np.zeros((size, size, 3), np.float32)
+        self.rects = {}
+        self.x = self.y = self.shelf = 0
+
+    def add(self, tile, painter, width=32, height=32):
+        """`painter(panel, width, height)` returns an image, or None to reuse the front panel."""
+        for panel in PANELS:
+            image = painter(panel, width, height)
+            if image is None:
+                self.rects[tile, panel] = self.rects[tile, "front"]
+                continue
+            if self.x + width > self.size:
+                self.x, self.y, self.shelf = 0, self.y + self.shelf, 0
+            assert self.y + height <= self.size, f"atlas {self.name} is full at {tile}"
+            self.pixels[self.y:self.y + height, self.x:self.x + width] = image
+            self.rects[tile, panel] = (self.x, self.y, width, height)
+            self.x, self.shelf = self.x + width, max(self.shelf, height)
+
+    def map(self, tile, panel, u, v, _size):
+        x, y, width, height = self.rects[tile, panel]
+        inset = 0.25  # keeps unfiltered sampling off the neighbouring panel
+        px = x + inset + u * (width - 2 * inset)
+        py = y + inset + (1 - v) * (height - 2 * inset)
+        return _material(self.name, self.pixels), (px / self.size, 1 - py / self.size)
+
+
+class Tiled:
+    """A small texture repeated at `density` pixels per metre, for buildings and hills."""
+
+    def __init__(self, name, pixels, density):
+        self.name, self.pixels, self.density = name, pixels, density
+
+    def map(self, _tile, _panel, u, v, size):
+        height, width = self.pixels.shape[:2]
+        return _material(self.name, self.pixels), (u * size[0] * self.density / width, v * size[1] * self.density / height)
+
+
+# Meshes -----------------------------------------------------------------------------
+
 class Shape:
-    """Collects flat-shaded primitives into one mesh with a material slot per colour."""
+    """Collects flat-shaded primitives into one mesh. Each primitive is textured by
+    box projection in its own frame, and belongs to the vertex group of the part
+    being drawn, so one bone carries it rigidly."""
 
-    def __init__(self):
+    def __init__(self, atlas=None):
         self.bm = bmesh.new()
-        self.colors = []
+        self.atlas = atlas
+        self.uv = self.bm.loops.layers.uv.new("UVMap")
+        self.deform = self.bm.verts.layers.deform.verify()
+        self.materials, self.groups = [], []
+        self.origin, self.group = Matrix.Identity(4), None
 
-    def _paint(self, faces, color):
-        if color not in self.colors:
-            self.colors.append(color)
-        for face in faces:
-            face.material_index = self.colors.index(color)
+    def part(self, origin, group=None):
+        """Everything drawn from here on sits in the frame `origin` and moves with `group`."""
+        self.origin, self.group = origin, group
+        if group is not None and group not in self.groups:
+            self.groups.append(group)
+
+    def _texture(self, made, matrix, tile, extent):
+        source = tile if isinstance(tile, Tiled) else self.atlas
+        inverse = matrix.inverted()
+        scale = matrix.to_scale()
+        metres = [extent[i] * scale[i] for i in range(3)]
+        for vert in made["verts"]:
+            if self.group is not None:
+                vert[self.deform][self.groups.index(self.group)] = 1.0
+        for face in {face for vert in made["verts"] for face in vert.link_faces}:
             face.smooth = False
+            local = [inverse @ loop.vert.co for loop in face.loops]
+            normal = Vector((0, 0, 0))
+            for a, b in zip(local, local[1:] + local[:1]):  # Newell's method, in the primitive's frame
+                normal += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
+            axis = max(range(3), key=lambda i: abs(normal[i]))
+            for loop, point in zip(face.loops, local):
+                p = [point[i] / extent[i] + 0.5 for i in range(3)]
+                if axis == 2:
+                    panel, u, v, size = "cap", p[0], p[1], (metres[0], metres[1])
+                elif axis == 1:  # a figure's front is Blender -Y
+                    panel, u, v, size = ("front", p[0], p[2], (metres[0], metres[2])) if normal.y < 0 else ("back", 1 - p[0], p[2], (metres[0], metres[2]))
+                else:  # u runs from the front edge to the back on both sides
+                    panel, u, v, size = "side", p[1], p[2], (metres[1], metres[2])
+                material, loop[self.uv].uv = source.map(tile, panel, u, v, size)
+            if material not in self.materials:
+                self.materials.append(material)
+            face.material_index = self.materials.index(material)
 
-    def _paint_new(self, made, color):
-        """Paints the faces of the vertices an operator has just made."""
-        self._paint({face for vert in made["verts"] for face in vert.link_faces}, color)
-
-    def cube(self, matrix, color):
+    def cube(self, matrix, tile):
         """A unit cube carried to its place and size by `matrix`."""
-        self._paint_new(bmesh.ops.create_cube(self.bm, size=1, matrix=matrix), color)
+        full = self.origin @ matrix
+        self._texture(bmesh.ops.create_cube(self.bm, size=1, matrix=full), full, tile, (1, 1, 1))
 
-    def cone(self, bottom, top, depth, sides, matrix, color):
+    def cone(self, bottom, top, depth, sides, matrix, tile):
         """A prism or pyramid along local Z, `sides` faces round."""
-        self._paint_new(bmesh.ops.create_cone(
+        full = self.origin @ matrix
+        made = bmesh.ops.create_cone(
             self.bm, cap_ends=True, cap_tris=False, segments=sides,
-            radius1=bottom, radius2=top, depth=depth, matrix=matrix,
-        ), color)
+            radius1=bottom, radius2=top, depth=depth, matrix=full,
+        )
+        width = 2 * max(bottom, top)
+        self._texture(made, full, tile, (width, width, depth))
 
-    def ico(self, radius, matrix, color):
-        self._paint_new(bmesh.ops.create_icosphere(self.bm, subdivisions=1, radius=radius, matrix=matrix), color)
+    def ico(self, radius, matrix, tile):
+        full = self.origin @ matrix
+        made = bmesh.ops.create_icosphere(self.bm, subdivisions=1, radius=radius, matrix=full)
+        self._texture(made, full, tile, (2 * radius, 2 * radius, 2 * radius))
 
-    def polygon(self, points, color, facing):
-        """A flat polygon through `points`, wound so its normal agrees with `facing`."""
-        face = self.bm.faces.new([self.bm.verts.new(p) for p in points])
+    def polygon(self, points, tile, facing):
+        """A flat upright polygon through `points`, wound so its normal agrees with `facing`."""
+        verts = [self.bm.verts.new(p) for p in points]
+        face = self.bm.faces.new(verts)
         face.normal_update()
         if face.normal.dot(facing) < 0:
             face.normal_flip()
-        self._paint([face], color)
+        xs, zs = [p[0] for p in points], [p[2] for p in points]
+        middle = Vector(((min(xs) + max(xs)) / 2, points[0][1], (min(zs) + max(zs)) / 2))
+        extent = (max(xs) - min(xs), 1, max(zs) - min(zs))
+        self._texture({"verts": verts}, Matrix.Translation(middle), tile, extent)
 
     def finish(self, name, parent=None):
         mesh = bpy.data.meshes.new(name)
         self.bm.to_mesh(mesh)
         self.bm.free()
-        for color in self.colors:
-            mesh.materials.append(material(color))
-        return link(bpy.data.objects.new(name, mesh), parent)
+        for material in self.materials:
+            mesh.materials.append(material)
+        obj = link(bpy.data.objects.new(name, mesh), parent)
+        for group in self.groups:
+            obj.vertex_groups.new(name=group)
+        return obj
 
 
 def scaled(matrix, x, y, z):
     return matrix @ Matrix.Diagonal((x, y, z, 1))
 
 
+# Rigs and clips -----------------------------------------------------------------
+
+def armature(name, bones, mesh):
+    """An armature called `name` that carries `mesh`. `bones` is
+    { bone: (parent, head, tail) } in armature space, parents first. Each bone's
+    joint frame is a plain translation to its head."""
+    data = bpy.data.armatures.new(name)
+    rig = link(bpy.data.objects.new(name, data))
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="EDIT")
+    for bone, (parent, head, tail) in bones.items():
+        edit = data.edit_bones.new(bone)
+        edit.head, edit.tail = head, tail
+        if parent:
+            edit.parent = data.edit_bones[parent]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    mesh.parent = rig
+    mesh.modifiers.new("Armature", "ARMATURE").object = rig
+    return rig
+
+
+def pose(rig, joints):
+    """Poses the rig so every bone's vertices are carried from their rest place by
+    joints[bone]: the bone's joint frame in armature space."""
+    posed = {}
+    for bone in rig.pose.bones:  # parents come first
+        rest = bone.bone.matrix_local
+        posed[bone.name] = joints[bone.name] @ Matrix.Translation(-bone.bone.head_local) @ rest
+        parent = bone.bone.parent
+        if parent is None:
+            bone.matrix_basis = rest.inverted() @ posed[bone.name]
+        else:
+            bone.matrix_basis = (parent.matrix_local.inverted() @ rest).inverted() @ posed[parent.name].inverted() @ posed[bone.name]
+
+
+def bake(rig, clip, frames):
+    """Keys one pose per frame (`frames` is a list of joint-frame dicts) as an action
+    on an NLA track called `clip`; the exporter writes one clip per track name."""
+    data = rig.animation_data or rig.animation_data_create()
+    data.action = bpy.data.actions.new(clip)
+    for frame, joints in enumerate(frames):
+        pose(rig, joints)
+        for bone in rig.pose.bones:
+            bone.keyframe_insert("location", frame=frame)
+            bone.keyframe_insert("rotation_quaternion", frame=frame)
+    action = data.action
+    track = data.nla_tracks.new()
+    track.name = clip
+    track.strips.new(clip, 0, action)
+    data.action = None
+
+
 def export(path, animations=False):
-    """Writes the whole scene as one .glb. Normals and UVs are left out: the
-    page shades every face flat, so the file only needs positions."""
+    """Writes the whole scene as one .glb with its textures embedded."""
     bpy.ops.export_scene.gltf(
         filepath=str(path),
         export_format="GLB",
         export_yup=True,
-        export_normals=False,
-        export_texcoords=False,
+        export_normals=True,
+        export_texcoords=True,
         export_tangents=False,
         export_materials="EXPORT",
+        export_extras=True,  # custom properties such as release_time reach the page as userData
+        export_skins=True,
         export_animations=animations,
-        export_animation_mode="NLA_TRACKS",  # one clip per NLA track name, across all objects
+        export_animation_mode="NLA_TRACKS",  # one clip per NLA track name
         export_force_sampling=True,
         export_frame_range=False,
         export_optimize_animation_size=False,
-        export_optimize_animation_keep_anim_object=True,
     )
 
 
 def stats(path):
-    """Size, triangle count and clip names of a .glb, read from its JSON chunk."""
+    """Size, triangle count, clips (with their lengths) and extras of a .glb, from its JSON chunk."""
     data = path.read_bytes()
     length = struct.unpack_from("<I", data, 12)[0]
     gltf = json.loads(data[20:20 + length])
@@ -133,9 +297,15 @@ def stats(path):
         for primitive in mesh["primitives"]:
             accessor = primitive.get("indices", primitive["attributes"]["POSITION"])
             triangles += gltf["accessors"][accessor]["count"] // 3
+    clips = []
+    for animation in gltf.get("animations", []):
+        times = [gltf["accessors"][sampler["input"]] for sampler in animation["samplers"]]
+        clips.append(f"{animation.get('name')} {min(t['min'][0] for t in times):.2f}-{max(t['max'][0] for t in times):.2f}s")
     return {
         "bytes": len(data),
         "triangles": triangles,
         "nodes": len(gltf.get("nodes", [])),
-        "clips": [a.get("name") for a in gltf.get("animations", [])],
+        "textures": len(gltf.get("images", [])),
+        "clips": clips,
+        "extras": {node["name"]: node["extras"] for node in gltf.get("nodes", []) if node.get("extras")},
     }

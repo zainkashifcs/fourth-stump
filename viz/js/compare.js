@@ -1,7 +1,7 @@
 // Comparison view: the same release at every venue, side by side, for the
 // selected ball age, bowler arm and bowling end. "Bowl again" animates one
 // sampled delivery per venue, with the batter taking that venue's better action.
-import { h, segmented } from './dom.js';
+import { h, segmented, toggle } from './dom.js';
 import { endCount, findScenario, venueKeys } from './data.js';
 import { actionLabel, armLabel, heightAtStumps, lineAtStumps, outcomeLabel, overs } from './format.js';
 import { actionTable, splitBar, venueColor, wicketCost } from './numbers.js';
@@ -34,6 +34,7 @@ export function createCompare(data, stage) {
   const keys = venueKeys(data);
   const ends = Array.from({ length: endCount(data) }, (_, index) => index);
   let state = { ageIndex: 0, arm: data.arms[0], end: 0 };
+  let runUp = false; // show the bowler's approach, under the three-camera director
   let cameraName = cameraOptions[0].value;
   let active = false;
   let bowled = 0;
@@ -75,7 +76,9 @@ export function createCompare(data, stage) {
   const controls = h(
     'form',
     { class: 'controls', 'aria-label': 'Delivery', onsubmit: (event) => event.preventDefault() },
-    ageField, armControl.el, cameraControl.el, replay,
+    ageField, armControl.el, cameraControl.el,
+    toggle({ label: 'Run-up', checked: runUp, onChange: (on) => { runUp = on; bowl(); } }),
+    replay,
   );
 
   // One column per venue -------------------------------------------------
@@ -90,12 +93,14 @@ export function createCompare(data, stage) {
       onChange: (end) => setState({ end }),
     });
     const viewport = h('div', { class: 'viewport', role: 'img' });
-    const caption = createCaption(viewport, `${venue.ball} ball`);
+    const caption = createCaption(viewport);
     const card = h('div', { class: 'card' });
     const el = h(
       'article',
       { class: 'venue', style: `--venue:${venueColor(index)}` },
-      h('header', { class: 'venue-head' }, h('h2', { text: venue.name }), endControl.el),
+      h('header', { class: 'venue-head' },
+        h('div', { class: 'venue-title' }, h('h2', { text: venue.name }), h('span', { class: 'venue-meta', text: venue.ball })),
+        endControl.el),
       viewport,
       card,
     );
@@ -107,26 +112,19 @@ export function createCompare(data, stage) {
   chart.setAttribute('class', 'endon');
   chart.setAttribute('role', 'img');
   const { meta } = data;
+  const key = (name, label) => h('li', {}, h('span', { class: `key key-${name}` }), label);
   const aside = h(
     'aside',
     { class: 'stumps-panel' },
-    h('header', { class: 'venue-head' }, h('h2', { text: 'At the stumps' })),
+    h('header', { class: 'venue-head' },
+      h('div', { class: 'venue-title' }, h('h2', { text: 'At the stumps' }), h('span', { class: 'venue-meta', text: 'From behind' })),
+      h('ul', { class: 'plot-key' }, key('mean', 'Mean'), key('sample', 'Sample'), key('live', 'Live'))),
     h('div', { class: 'endon-frame' }, chart),
-    h('div', { class: 'notes' },
-      h('ul', { class: 'legend' },
-        columns.map(({ venue, index }) =>
-          h('li', { style: `--venue:${venueColor(index)}` }, h('span', { class: 'swatch' }), venue.name))),
-      h('p', { text: 'Seen from behind the stumps. Solid mark: the mean delivery. Rings: sampled deliveries. White ring: the one being bowled.' }),
-      h('p', { text: 'Expected value = expected runs minus wicket cost times the probability of dismissal.' }),
-      h('p', { text: 'In the 3D views the ball is drawn larger than life.' }),
-      meta.wicket_cost_source === 'placeholder'
-        && h('p', { class: 'note-warn', text: 'The wicket cost is a placeholder, not yet read from the run-expectancy table. The expected values will move when it is.' }),),
   );
-  const footnote = h('p', { class: 'fine footnote', text: `Each panel bowls one sampled delivery; the batter takes the better action. ${Number(meta.deliveries_per_estimate).toLocaleString('en-GB')} deliveries per estimate, ${meta.wickets_lost} wickets lost, ${Number(meta.runs_middled).toFixed(2)} runs when middled. Data ${meta.generated}.` });
 
   const live = h('p', { class: 'visually-hidden', 'aria-live': 'polite' });
   const grid = h('div', { class: 'compare-grid', style: `--venues:${keys.length}` }, columns.map((c) => c.el), aside);
-  const el = h('section', { class: 'compare', 'aria-label': 'Compare venues' }, controls, grid, footnote, live);
+  const el = h('section', { class: 'compare', 'aria-label': 'Compare venues' }, controls, grid, live);
 
   // Rendering --------------------------------------------------------------
   function scenarios() {
@@ -166,7 +164,9 @@ export function createCompare(data, stage) {
         color: venueColor(index),
         fan: delivery.others,
         mean: scenario.path,
+        runUp,
         onEvent: () => caption.show(words),
+        onCut: (tag) => caption.setTag(tag),
       });
       stage.setOutcome(index, animation);
       finished.push(stage.playTo(index, 'end').then((arrived) => arrived && `${venue.name}: ${words.action}, ${words.outcome.toLowerCase()}`));
@@ -178,7 +178,8 @@ export function createCompare(data, stage) {
         picked: delivery.picked,
       });
     });
-    renderEndOn(chart, constants, entries);
+    const frame = chart.parentElement;
+    renderEndOn(chart, constants, entries, frame.clientHeight > 0 ? frame.clientWidth / frame.clientHeight : undefined);
     chart.setAttribute('aria-label', `End-on chart of where the delivery passes the stumps at ${entries.map((e) => e.name).join(', ')}.`);
     Promise.all(finished).then((lines) => {
       if (round === bowled && lines.length > 0 && lines.every(Boolean)) live.textContent = `${lines.join('. ')}.`;
@@ -203,11 +204,14 @@ export function createCompare(data, stage) {
       const [x, z] = lastPoint(scenario.path);
       const passes = `${lineAtStumps(x, constants.stump_half_width)}, ${heightAtStumps(z, constants.stump_height)}`;
       viewport.setAttribute('aria-label', `3D view of a delivery at ${venue.name} with a ${venue.ball} ball. At the stumps the mean delivery is ${passes}.`);
+      const open = card.querySelector('details')?.open ?? false; // keep the toggle as the visitor left it
       card.replaceChildren(
         actionTable(scenario),
-        splitBar(scenario),
-        h('p', { class: 'passes' }, 'At the stumps ', h('b', { text: passes })),
-        wicketCost(scenario, meta),
+        h('details', { class: 'more', open },
+          h('summary', { text: 'Details' }),
+          splitBar(scenario),
+          h('p', { class: 'passes' }, 'Mean delivery at the stumps: ', h('b', { text: passes })),
+          wicketCost(scenario, meta)),
       );
     });
     bowl();

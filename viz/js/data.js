@@ -28,10 +28,11 @@ export function validate(data) {
   return data;
 }
 
-export async function loadData(url = './data/trajectories.json') {
+// The file as it is on disk, unchecked: pass it to validate().
+export async function fetchData(url = './data/trajectories.json') {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
-  return validate(await response.json());
+  return response.json();
 }
 
 export function findScenario(data, { venue, ballAge, arm, end }) {

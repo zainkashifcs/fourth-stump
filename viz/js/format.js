@@ -53,5 +53,6 @@ export function lineAtStumps(x, stumpHalfWidth) {
 
 export function heightAtStumps(z, stumpHeight) {
   const gap = z - stumpHeight;
+  if (Math.round(Math.abs(gap) * 100) === 0) return 'level with the bails'; // never "0 cm above"
   return gap > 0 ? `${cm(gap)} above the bails` : `${cm(gap)} below the bails`;
 }

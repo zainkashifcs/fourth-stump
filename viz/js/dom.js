@@ -36,3 +36,29 @@ export function segmented({ legend, hideLegend = false, options, value, onChange
   const set = (next) => inputs.forEach(({ option, input }) => { input.checked = option.value === next; });
   return { el, set };
 }
+
+// A native checkbox with its label, styled as a switch.
+export function toggle({ label, checked, onChange }) {
+  const input = h('input', { type: 'checkbox' });
+  input.checked = checked;
+  input.addEventListener('change', () => onChange(input.checked));
+  return h('label', { class: 'check' }, input, h('span', { text: label }));
+}
+
+// A yes/no choice kept in localStorage; it still works, unremembered, when storage is blocked.
+export function remembered(key, fallback) {
+  let value = fallback;
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored != null) value = stored === 'yes';
+  } catch { /* storage blocked */ }
+  return {
+    get: () => value,
+    set(next) {
+      value = next;
+      try {
+        localStorage.setItem(key, next ? 'yes' : 'no');
+      } catch { /* storage blocked */ }
+    },
+  };
+}

@@ -13,7 +13,8 @@ function el(tag, attributes = {}, text) {
 
 // entries: [{ name, color, end: [x, z], fanEnds: [[x, z], ...], picked?: [x, z] }]
 // `picked` is the sampled delivery being animated in the 3D view.
-export function renderEndOn(svg, constants, entries) {
+// `aspect` (width over height of the space the chart has) lets a tall space show more height above the stumps.
+export function renderEndOn(svg, constants, entries, aspect) {
   const {
     stump_half_width: halfWidth, stump_height: height, ball_radius: radius,
     corridor_min: corridorMin, corridor_max: corridorMax,
@@ -21,8 +22,8 @@ export function renderEndOn(svg, constants, entries) {
   const all = entries.flatMap((entry) => [entry.end, ...entry.fanEnds]);
   const xMin = Math.min(-halfWidth - 0.25, ...all.map(([x]) => x - 0.1));
   const xMax = Math.max(corridorMax + 0.25, ...all.map(([x]) => x + 0.1));
-  const zMax = Math.max(height + 0.3, ...all.map(([, z]) => z + 0.15));
   const labelRoom = 0.11; // space under the ground line for the side labels
+  const zMax = Math.max(height + 0.3, ...all.map(([, z]) => z + 0.15), aspect ? (xMax - xMin) / aspect - labelRoom : 0);
   const X = (x) => (x - xMin) * UNITS;
   const Y = (z) => (zMax - z) * UNITS;
   const M = (metres) => metres * UNITS;

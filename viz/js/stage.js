@@ -1,19 +1,23 @@
 // One WebGL canvas, one scene and one camera, drawn into several page
 // elements ("views") with scissored viewports. Every view shows the same
-// ground from the same camera. The batter, bowler, wicket and ball are shared:
-// before each view is drawn, that view's play poses them for its own delivery
-// and its venue's backdrop and sky are switched in.
+// ground. The batter, bowler, wicket and ball are shared: before each view is
+// drawn, that view's play poses them for its own delivery, its venue's
+// backdrop and sky are switched in, and, when a run-up is shown, the
+// director's camera for that moment replaces the visitor's.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { toScene } from './coords.js';
 import { buildWorld } from './world.js';
 import { createPlay } from './play.js';
 import { WATCHING } from './outcomes.js';
+import { RELEASE, cutAt, shotFor } from './director.js';
 import { buildBall } from './models/ball.js';
-import { buildWicket } from './models/wicket.js';
+import { buildStumps } from './models/stumps.js';
 import { buildBatter } from './models/batter.js';
-import { buildBowler, buildSlip } from './models/fielders.js';
+import { buildBowler } from './models/bowler.js';
+import { buildSlip } from './models/fielders.js';
 import { buildBackdrops, skyFor } from './models/backdrops.js';
+import { textureReport } from './models/load.js';
 
 const VERTICAL_FOV = 34;
 const MIN_HORIZONTAL_FOV = 24; // narrow views widen their lens instead of cropping the pitch
@@ -29,6 +33,7 @@ export const cameraOptions = Object.entries(CAMERAS).map(([value, { label }]) =>
 
 const radians = THREE.MathUtils.degToRad;
 const degrees = THREE.MathUtils.radToDeg;
+const toData = (v) => [v.x, -v.z, v.y]; // the inverse of coords.js
 
 function fovFor(aspect) {
   const horizontal = 2 * Math.atan(Math.tan(radians(VERTICAL_FOV) / 2) * aspect);
@@ -36,8 +41,9 @@ function fovFor(aspect) {
   return degrees(2 * Math.atan(Math.tan(radians(MIN_HORIZONTAL_FOV) / 2) / aspect));
 }
 
-// models: what models/load.js resolved, { batter, bowler, slip, <venue key>... }
-export function createStage(constants, venueKeys, models) {
+// models: what models/load.js resolved, { batter, bowler, slip, stumps, <venue key>... }
+// onSound(name, level) is called when a view's delivery reaches one of its sound cues.
+export function createStage(constants, venueKeys, models, { onSound } = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
@@ -53,31 +59,34 @@ export function createStage(constants, venueKeys, models) {
   const actors = {
     ball: buildBall(constants.ball_radius),
     batter: buildBatter(models.batter, constants),
-    wicket: buildWicket(constants, 0),
+    bowler: buildBowler(models.bowler),
+    wicket: buildStumps(models.stumps, constants, 0),
   };
-  const bowler = buildBowler(models.bowler);
   const slip = buildSlip(models.slip);
   const backdrops = buildBackdrops(Object.fromEntries(venueKeys.map((key) => [key, models[key]])), constants.pitch_length);
   scene.add(
-    actors.ball.group, actors.batter.group, actors.wicket.group,
-    buildWicket(constants, constants.pitch_length).group,
-    bowler.group, slip.group, ...Object.values(backdrops),
+    actors.ball.group, actors.batter.group, actors.bowler.group, actors.wicket.group,
+    buildStumps(models.stumps, constants, constants.pitch_length).group, // the bowler's end, never broken
+    slip.group, ...Object.values(backdrops),
   );
 
-  const camera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500);
+  const camera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500); // the visitor's, moved by dragging
+  const directorCamera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500);
   const controls = new OrbitControls(camera, canvas);
   controls.enableZoom = false; // the wheel scrolls the page
   controls.maxPolarAngle = Math.PI / 2 - 0.03;
   canvas.style.touchAction = 'pan-y';
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let views = []; // { el, venue, arm, release, play, animation, time, run, fired, onEvent }
+  let views = []; // { el, venue, play, animation, time, run, fired, onEvent, cutTag, onCut }
   let host = null;
   let dirty = true;
   let lastTime = 0;
+  let takenOver = false; // the visitor has grabbed the camera back from the director
   const invalidate = () => { dirty = true; };
   const observer = new ResizeObserver(invalidate);
   controls.addEventListener('change', invalidate);
+  controls.addEventListener('start', () => { takenOver = true; });
   window.addEventListener('resize', invalidate);
 
   function setCamera(name) {
@@ -94,12 +103,19 @@ export function createStage(constants, venueKeys, models) {
     run?.resolve(arrived);
   }
 
+  function setTag(view, tag) {
+    if (view.cutTag === tag) return;
+    view.cutTag = tag;
+    view.onCut?.(tag);
+  }
+
   function clearPlay(index) {
     const view = views[index];
     if (!view) return;
     stop(view, false);
     view.play?.dispose();
     view.play = null;
+    setTag(view, null);
     invalidate();
   }
 
@@ -108,19 +124,25 @@ export function createStage(constants, venueKeys, models) {
     observer.disconnect();
     host = nextHost;
     host.prepend(canvas);
-    views = elements.map((el) => ({ el, venue: null, play: null, time: 0, run: null, fired: false, onEvent: null }));
+    views = elements.map((el) => ({ el, venue: null, play: null, time: 0, run: null, fired: false, onEvent: null, cutTag: null, onCut: null }));
     [host, ...elements].forEach((el) => observer.observe(el));
     invalidate();
   }
 
-  // spec: { venue, arm, path, bounceIndex, pauseIndex?, color, fan?, mean?, onEvent? }
+  // spec: { venue, arm, path, bounceIndex, pauseIndex?, runUp?, color, fan?, mean?, onEvent?, onCut? }
+  // runUp shows the bowler's approach under the three-camera director; reduced motion never does.
   function setPlay(index, spec) {
     clearPlay(index);
     const view = views[index];
-    const play = createPlay(spec, constants, slip.catchPoint);
+    const lead = spec.runUp && !reducedMotion.matches ? RELEASE : 0;
+    const play = createPlay({ ...spec, lead }, constants, slip.catchPoint);
     play.group.visible = false;
     scene.add(play.group);
-    Object.assign(view, { play, venue: spec.venue, arm: spec.arm, release: spec.path[0], time: 0, fired: false, animation: null, onEvent: spec.onEvent ?? null });
+    Object.assign(view, {
+      play, venue: spec.venue, arm: spec.arm, time: 0, fired: false, animation: null,
+      onEvent: spec.onEvent ?? null, onCut: spec.onCut ?? null,
+    });
+    takenOver = false;
     invalidate();
   }
 
@@ -168,31 +190,60 @@ export function createStage(constants, venueKeys, models) {
   function advance(seconds) {
     views.forEach((view) => {
       if (!view.run) return;
+      const before = view.time;
       view.time = Math.min(view.time + seconds * view.run.rate, view.run.until);
+      view.play.cues().forEach((cue) => {
+        if (cue.time > before && cue.time <= view.time) onSound?.(cue.sound, 1 / Math.sqrt(views.length));
+      });
       checkEvent(view);
       if (view.time >= view.run.until) stop(view, true);
       dirty = true;
     });
   }
 
-  function pose(view) {
+  // Poses the shared actors for one view and returns the camera to draw it with.
+  function pose(view, aspect, clock) {
     scene.background.setHex(skyFor(view.venue));
     Object.entries(backdrops).forEach(([key, backdrop]) => { backdrop.visible = key === view.venue; });
     views.forEach((other) => {
       if (other.play) other.play.group.visible = other === view;
     });
-    bowler.group.visible = Boolean(view.play);
-    if (view.play) {
-      bowler.place(view.release, view.arm);
-      view.play.apply(view.time, actors);
-    } else {
+    actors.bowler.group.visible = Boolean(view.play);
+    if (!view.play) {
       actors.ball.group.visible = false;
-      actors.batter.setPose('stance', 0);
-      actors.wicket.setBreak(0);
+      actors.batter.pose(clock, null);
+      actors.wicket.pose(null);
+    } else {
+      view.play.apply(view.time, actors, clock);
     }
+
+    const zoom = fovFor(aspect) / VERTICAL_FOV;
+    if (!view.play || view.play.lead === 0 || takenOver) {
+      setTag(view, null);
+      camera.aspect = aspect;
+      camera.fov = VERTICAL_FOV * zoom;
+      camera.updateProjectionMatrix();
+      return camera;
+    }
+    const cut = cutAt(view.time, { eventTime: view.play.decided ? view.play.eventTime : Infinity });
+    const shot = shotFor(cut, {
+      time: view.time,
+      side: view.arm === 'left' ? -1 : 1,
+      pitchLength: constants.pitch_length,
+      ball: actors.ball.group.visible ? toData(actors.ball.group.position) : null,
+      impact: toData(view.play.impact),
+      home: CAMERAS.stumps,
+    });
+    setTag(view, cut.tag);
+    directorCamera.position.copy(toScene(...shot.position));
+    directorCamera.lookAt(toScene(...shot.target));
+    directorCamera.aspect = aspect;
+    directorCamera.fov = (shot.fov ?? VERTICAL_FOV) * zoom;
+    directorCamera.updateProjectionMatrix();
+    return directorCamera;
   }
 
-  function draw() {
+  function draw(clock) {
     const width = host.clientWidth;
     const height = host.clientHeight;
     const size = renderer.getSize(new THREE.Vector2());
@@ -210,11 +261,7 @@ export function createStage(constants, venueKeys, models) {
       const bottom = frame.bottom - rect.bottom;
       renderer.setViewport(left, bottom, rect.width, rect.height);
       renderer.setScissor(left, bottom, rect.width, rect.height);
-      camera.aspect = rect.width / rect.height;
-      camera.fov = fovFor(camera.aspect);
-      camera.updateProjectionMatrix();
-      pose(view);
-      renderer.render(scene, camera);
+      renderer.render(scene, pose(view, rect.width / rect.height, clock));
     });
   }
 
@@ -222,15 +269,23 @@ export function createStage(constants, venueKeys, models) {
     const seconds = Math.min((time - lastTime) / 1000, 0.05);
     lastTime = time;
     advance(seconds);
-    if (dirty && host && host.clientWidth > 0) {
+    // a delivery waiting for its ending (the game, paused at the bounce) keeps the batter's idle loop alive
+    const idling = !reducedMotion.matches && views.some((view) => view.play && !view.run && view.time < view.play.duration);
+    if ((dirty || idling) && host && host.clientWidth > 0) {
       dirty = false;
-      draw();
+      draw(time / 1000);
     }
     requestAnimationFrame(frame);
   }
 
+  // What the mixers have shown and how the textures are set, read back live: for checking in the browser.
+  const report = () => ({
+    clips: { batter: [...actors.batter.clips], bowler: [...actors.bowler.clips], stumps: [...actors.wicket.clips] },
+    textures: textureReport(),
+  });
+
   setCamera('stumps');
   requestAnimationFrame(frame);
 
-  return { mount, setPlay, clearPlay, setOutcome, playTo, jumpTo, setCamera };
+  return { mount, setPlay, clearPlay, setOutcome, playTo, jumpTo, setCamera, report };
 }

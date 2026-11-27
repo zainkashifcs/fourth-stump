@@ -86,3 +86,18 @@ viz-data: python
 
 clean:
 	rm -rf $(BUILD) fourth_stump/_engine*
+
+# The page's live engine (ADR-016). Single-threaded, no OpenMP, no fast-math, fixed memory.
+# The outputs are committed so the page needs no build step. Needs emcc on PATH (emsdk_env).
+EMCC      ?= emcc
+WASMFLAGS := -std=c++20 -O3 -ffp-contract=off -Wall -Wextra -Wpedantic -Werror -Icpp/include \
+             -fno-exceptions -fno-rtti -fno-threadsafe-statics -sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,worker,node \
+             -sFILESYSTEM=0 -sMALLOC=none -sINITIAL_HEAP=65536 -sDYNAMIC_EXECUTION=0 -sINCOMING_MODULE_JS_API=[] \
+             -sEXPORTED_RUNTIME_METHODS=HEAPF64 \
+             -sEXPORTED_FUNCTIONS=_live_inputs,_live_counts,_live_outputs,_live_arrivals,_live_path,_live_capacity,_live_check,_live_limit,_live_length,_live_release_y,_live_simulate,_live_summarize,_live_sample
+.PHONY: wasm
+wasm: viz/wasm/engine.mjs
+
+viz/wasm/engine.mjs: cpp/wasm/live.cpp $(HEADERS)
+	mkdir -p viz/wasm
+	$(EMCC) $(WASMFLAGS) $< -o $@

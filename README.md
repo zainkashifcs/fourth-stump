@@ -2,9 +2,9 @@
 
 A deterministic, zero-allocation C++20 Monte Carlo engine that simulates 31 million cricket deliveries per second, with a closed-form trajectory kernel checked against an RK4 reference to a measured error bound of 8 mm.
 
-It answers one question. A fast bowler lands the ball just outside off stump, in the "fourth-stump corridor". Should the batter leave it or play it? The answer depends on the ground: the same release swings at Lord's, bounces over the stumps at Perth and seams at Newlands.
+It answers one question. A fast bowler lands the ball just outside off stump, in the "fourth-stump corridor". Should the batter leave it or play it? The answer depends on the ground: the same release swings at Lord's, bounces over the stumps at the WACA in Perth and seams at Newlands.
 
-![The same release at Lord's, Perth and Newlands](viz/screenshots/comparison.png)
+![The same release at Lord's, the WACA and Newlands](viz/screenshots/comparison.png)
 
 ## Headline numbers
 
@@ -133,7 +133,7 @@ Ball-by-ball data for 905 men's Tests (1.74 million deliveries, 2001 to 2026) co
 | Venue | New-ball deliveries | Seam deviation spread | Catch conversion | Mean restitution `e_z` (assumed) |
 |---|---|---|---|---|
 | Lord's | 23,715 | 0.42° (0.40° to 0.44°) | 0.73 (0.61 to 0.86) | 0.52 |
-| Perth (WACA and Perth Stadium) | 10,949 | 0.50° (0.45° to 0.54°) | 0.18 (0.14 to 0.24) | 0.62 |
+| The WACA, Perth (13 Tests at the WACA, 6 at Perth Stadium) | 10,949 | 0.50° (0.45° to 0.54°) | 0.18 (0.14 to 0.24) | 0.62 |
 | Newlands | 14,785 | 0.41° (0.38° to 0.44°) | 0.47 (0.39 to 0.59) | 0.56 |
 
 Intervals are 95% bootstrap intervals for sampling noise in the counts only.
@@ -149,7 +149,9 @@ What the calibration does and does not show:
 
 ## The visualisation
 
-A static Three.js page styled as a retro Test-match broadcast, reading trajectories precomputed by the engine. The models are in the style of a late-1990s console game: a few hundred triangles each, unfiltered pixel-art textures, and rigid skinning with one bone per body part. A batter, a bowler, a slip, the stumps, the Lord's Pavilion, the WACA scoreboard, and Table Mountain with Devil's Peak are built, painted, rigged and animated by the Python scripts in `viz/blender/` and exported as glTF to `viz/assets/`. The page plays their baked clips (run-up, bound and delivery, appeal, forward defensive, leave, edge, the stumps flying) in time with the engine's release and arrival times.
+A static Three.js page styled as a retro Test-match broadcast, reading trajectories precomputed by the engine. The models are in the style of a late-1990s console game: a few hundred triangles each, unfiltered pixel-art textures, and rigid skinning with one bone per body part. A batter, a bowler, a slip, a ring fielder at cover, the stumps, the ground's stands, rope and boards, the Lord's Pavilion, the WACA scoreboard, and Table Mountain with Devil's Peak are built, painted, rigged and animated by the Python scripts in `viz/blender/` and exported as glTF to `viz/assets/`. The page plays their baked clips (run-up, bound and delivery, appeal, forward defensive, leave, edge, the fielders' crouch, the stumps flying) in time with the engine's release and arrival times. The stands leave the view behind the bowler open for each ground's backdrop, and the boards carry that ground's name.
+
+The batter stands outside leg stump so a corridor delivery never passes through him: his head, body and pads stay at least 15 cm to the leg side of middle stump, he moves across to meet the ball when he plays, and when he leaves one that would hit him on the leg side he steps further to leg.
 
 ```
 cd viz && python -m http.server 8000     # then open http://localhost:8000/
@@ -157,7 +159,10 @@ cd viz && python -m http.server 8000     # then open http://localhost:8000/
 
 - **Compare venues.** The same release at the three grounds, with a ball-age slider, a bowler-arm toggle and a bowling-end toggle. "Bowl again" bowls one sampled delivery per ground and plays its outcome: middled, edged, bowled, left alone or play-and-miss. From the Pavilion End at Lord's the slope takes the ball into a right-hander; from the Nursery End, away.
 - **Test your eye.** The bowler runs in through three camera cuts (behind his mark, side-on at the crease, then the batter's view), and the picture freezes at the bounce. Choose leave or play, then see the true path, the outcome and the expected value of both actions.
-- **Around it.** A teletext boot screen that tracks the real loading (skip it with any key, or `?noboot=1`), sound effects synthesised with the Web Audio API (no audio files), and a "How it works" panel.
+- **Cameras.** Behind the stumps, side on, or from above (a high camera in the stand behind the batter that takes in the whole pitch, the cover fielder and the far stands). With the run-up on, the director's third cut lands on the chosen camera; behind the stumps it closes in on the bat or the stumps when the ball gets there, and holds the wide frame for a ball left alone or missed so its path runs on to the keeper.
+- **Around it.** A teletext boot screen that tracks the real loading (skip it with any key, or `?noboot=1`), sound synthesised with the Web Audio API (no audio files): ball, bat and stumps, a crowd murmur between balls and a crowd reaction to each outcome. A commentator's line for each outcome appears as a caption and, with sound on, is spoken once by the browser's speech synthesis. There is also a "How it works" panel.
+
+![Side on, with the stands, the boards and the cover fielder](viz/screenshots/sideon.png)
 
 ![Test Your Eye](viz/screenshots/game.png)
 
@@ -219,7 +224,7 @@ The paper figures were read from abstract and index pages, not the full texts. T
 - The population of releases used for calibration: right-arm over the wicket to a right-hander.
 - The slip cordon's distance (13 m), the pace an edge keeps, and the width of the edge band on the bat.
 - A new ball every 80 overs; declarations, the follow-on and the match situation are ignored in the wicket cost.
-- "Perth" pools 13 Tests at the WACA with 6 at Perth Stadium.
+- "The WACA, Perth" pools 13 Tests at the WACA with 6 at Perth Stadium.
 
 ## Third-party code
 

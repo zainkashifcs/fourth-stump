@@ -518,7 +518,7 @@ TEMPLATE_TEST_CASE("a batch split into pieces at any boundaries gives the same b
     pieces.sample(ReleaseSpec{}, Conditions{}, 99);
     const ReleaseBatch in = pieces.releases();
     OutcomeBatch out = pieces.outcomes();
-    for (const auto [first, count] : {std::pair<std::size_t, std::size_t>{0, 37}, {37, 463}, {500, 1}, {501, 499}}) {
+    for (const auto& [first, count] : {std::pair<std::size_t, std::size_t>{0, 37}, {37, 463}, {500, 1}, {501, 499}}) {
         const auto cut = [&](auto s) { return s.subspan(first, count); };
         const ReleaseBatch part{cut(in.x), cut(in.z), cut(in.vx), cut(in.vy), cut(in.vz)};
         OutcomeBatch o{cut(out.bat_x), cut(out.bat_z), cut(out.stumps_x), cut(out.stumps_z), cut(out.expected_x),

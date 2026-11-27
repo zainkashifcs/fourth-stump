@@ -46,9 +46,9 @@ const cm = (metres) => `${Math.round(Math.abs(metres) * 100)} cm`;
 
 // Where a delivery passes the plane of the batter's stumps, in words.
 export function lineAtStumps(x, stumpHalfWidth) {
-  if (x > stumpHalfWidth) return `${cm(x - stumpHalfWidth)} outside off stump`;
-  if (x < -stumpHalfWidth) return `${cm(x + stumpHalfWidth)} outside leg stump`;
-  return 'in line with the stumps';
+  const outside = Math.abs(x) - stumpHalfWidth;
+  if (Math.round(outside * 100) <= 0) return 'in line with the stumps'; // never "0 cm outside"
+  return `${cm(outside)} outside ${x > 0 ? 'off' : 'leg'} stump`;
 }
 
 export function heightAtStumps(z, stumpHeight) {

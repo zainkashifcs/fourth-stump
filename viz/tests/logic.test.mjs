@@ -23,6 +23,8 @@ test('formats probabilities and expected values', () => {
   assert.equal(lineAtStumps(0.3953, 0.1143), '28 cm outside off stump');
   assert.equal(lineAtStumps(-0.3, 0.1143), '19 cm outside leg stump');
   assert.equal(lineAtStumps(0.05, 0.1143), 'in line with the stumps');
+  assert.equal(lineAtStumps(0.117, 0.1143), 'in line with the stumps');
+  assert.equal(lineAtStumps(-0.117, 0.1143), 'in line with the stumps');
   assert.equal(heightAtStumps(0.6245, 0.711), '9 cm below the bails');
   assert.equal(outcomeLabel('edged_caught'), 'Edged and caught');
   assert.equal(outcomeLabel('something_new'), 'something_new');

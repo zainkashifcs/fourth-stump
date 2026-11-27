@@ -1,6 +1,9 @@
 // Comparison view: the same release at every venue, side by side, for the
 // selected ball age, bowler arm and bowling end. "Bowl again" animates one
 // sampled delivery per venue, with the batter taking that venue's better action.
+// Bowling all three is not spoken (each picture shows its own commentary
+// ticker, and the crowd reacts once, to the most dramatic outcome); a venue's
+// Replay bowls its last delivery again on its own, with the commentary spoken.
 import { h, segmented, toggle } from './dom.js';
 import { endCount, findScenario, venueKeys } from './data.js';
 import { actionLabel, armLabel, heightAtStumps, lineAtStumps, outcomeLabel, overs } from './format.js';
@@ -9,6 +12,7 @@ import { renderEndOn } from './endon.js';
 import { cameraOptions } from './stage.js';
 import { animationFor } from './outcomes.js';
 import { createCaption } from './caption.js';
+import { setCrowdRound } from './audio.js';
 
 const lastPoint = (path) => {
   const [x, , z] = path[path.length - 1];
@@ -95,16 +99,22 @@ export function createCompare(data, stage) {
     const viewport = h('div', { class: 'viewport', role: 'img' });
     const caption = createCaption(viewport);
     const card = h('div', { class: 'card' });
+    const replayOne = h('button', {
+      type: 'button', class: 'button venue-replay', text: 'Replay', disabled: true,
+      'aria-label': `Replay the last delivery at ${venue.name}`,
+    });
     const el = h(
       'article',
       { class: 'venue', style: `--venue:${venueColor(index)}` },
       h('header', { class: 'venue-head' },
-        h('div', { class: 'venue-title' }, h('h2', { text: venue.name }), h('span', { class: 'venue-meta', text: venue.ball })),
+        h('div', { class: 'venue-title' }, h('h2', { text: venue.name }), h('span', { class: 'venue-meta', text: venue.ball }), replayOne),
         endControl.el),
       viewport,
       card,
     );
-    return { key, venue, index, endControl, viewport, caption, card, el };
+    const column = { key, venue, index, endControl, viewport, caption, card, el, replayOne, last: null };
+    replayOne.addEventListener('click', () => replayVenue(column));
+    return column;
   });
 
   // The end-on chart and the notes ----------------------------------------
@@ -144,6 +154,7 @@ export function createCompare(data, stage) {
     const pick = Math.floor(Math.random() * 1e6);
     const entries = [];
     const finished = [];
+    const kinds = [];
     scenarios().forEach(({ column, scenario }) => {
       const { venue, caption, index, key } = column;
       caption.clear();
@@ -156,7 +167,7 @@ export function createCompare(data, stage) {
       const outcome = forced?.outcome ?? delivery.outcomes?.[action];
       const animation = animationFor(action, outcome);
       const words = { action: actionLabel(action), outcome: outcome ? outcomeLabel(outcome) : '', flash: animation.flash };
-      stage.setPlay(index, {
+      const spec = {
         venue: key,
         arm: state.arm,
         path: delivery.path,
@@ -167,7 +178,11 @@ export function createCompare(data, stage) {
         runUp,
         onEvent: () => caption.show(words),
         onCut: (tag) => caption.setTag(tag),
-      });
+      };
+      Object.assign(column, { last: { spec, animation } });
+      column.replayOne.disabled = false;
+      kinds.push(animation.name);
+      stage.setPlay(index, spec);
       stage.setOutcome(index, animation);
       finished.push(stage.playTo(index, 'end').then((arrived) => arrived && `${venue.name}: ${words.action}, ${words.outcome.toLowerCase()}`));
       entries.push({
@@ -178,12 +193,24 @@ export function createCompare(data, stage) {
         picked: delivery.picked,
       });
     });
+    setCrowdRound(kinds);
     const frame = chart.parentElement;
     renderEndOn(chart, constants, entries, frame.clientHeight > 0 ? frame.clientWidth / frame.clientHeight : undefined);
     chart.setAttribute('aria-label', `End-on chart of where the delivery passes the stumps at ${entries.map((e) => e.name).join(', ')}.`);
     Promise.all(finished).then((lines) => {
       if (round === bowled && lines.length > 0 && lines.every(Boolean)) live.textContent = `${lines.join('. ')}.`;
     });
+  }
+
+  // One venue's last delivery again, on its own: its commentary is spoken.
+  function replayVenue(column) {
+    if (!active || !column.last) return;
+    const { spec, animation } = column.last;
+    setCrowdRound(null);
+    column.caption.clear();
+    stage.setPlay(column.index, spec);
+    stage.setOutcome(column.index, animation);
+    stage.playTo(column.index, 'end');
   }
 
   function update() {
@@ -228,6 +255,7 @@ export function createCompare(data, stage) {
     },
     deactivate() {
       active = false;
+      setCrowdRound(null);
     },
   };
 }

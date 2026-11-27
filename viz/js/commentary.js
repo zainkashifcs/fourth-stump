@@ -2,11 +2,12 @@
 // broadcast, a short lifted call, a breath, then the descriptive clause. The
 // ticker in each picture shows the call at once and adds the clause when it is
 // spoken. While sound is on, the line is played from clips recorded offline
-// (viz/audio/commentary/, see generate_commentary.py) through a broadcast
+// (assets/audio/commentary/, see viz/audio/generate_commentary.py) through a broadcast
 // microphone chain in audio.js; if a clip cannot be had, the browser's speech
 // synthesis says the same beats, and failing that the ticker alone carries it.
-// In Compare venues three panels bowl at once; each shows its own line, but
-// only the most dramatic is spoken.
+// In Compare venues three panels bowl at once; each shows its own line and
+// nothing is spoken; a single view (a replayed venue, the game, the live
+// engine) has its line spoken.
 //
 // Everything above the runtime section is pure and tested under node; nothing
 // at the top of this module touches the browser.
@@ -82,6 +83,10 @@ export function beatPlan(seconds, gapMs, rates = seconds.length > 1 ? BEAT_RATES
 // About how long a call takes to say, for the ticker when nothing is speaking it.
 export const estimateSeconds = (text) => 0.25 + 0.052 * text.length;
 
+// Whether a round of deliveries is spoken: only when one view bowls on its own. Three
+// venues bowling at once would talk over each other, so their tickers carry the words.
+export const speechAllowed = (views) => views === 1;
+
 // The level of the crowd under the commentator: down a little while he speaks, and on a
 // dismissal up again in the breath after the call. [seconds from the first beat, gain].
 export const DUCK = 0.6;
@@ -113,11 +118,9 @@ export function speechBounds(samples, sampleRate, threshold = 0.003, margin = 0.
 
 // Runtime ---------------------------------------------------------------------
 
-const WAIT = 1500; // milliseconds a round waits for slower panels before speaking what it has
-
 let soundOn = false;
 let audio = null; // { context(), voiceInput(), duckCrowd(points, start) } from audio.js
-let round = null; // { waiting: Set, shown: Map(view -> { kind, length, reveal }), spoken, timer }
+let round = null; // { waiting: Set of views yet to show, members: Set of views, reveals }
 let opening = false; // captions cleared in one task belong to one round
 let ticket = 0; // bumped whenever speech must stop, so late callbacks know they are stale
 let playing = []; // buffer sources and timers of the line now being said
@@ -141,7 +144,7 @@ function later(fn, ms) {
 
 function clip(context, file) {
   if (!clips.has(file)) {
-    const url = new URL(`../audio/commentary/${file}`, import.meta.url);
+    const url = new URL(`../assets/audio/commentary/${file}`, import.meta.url);
     clips.set(file, fetch(url)
       .then((response) => {
         if (!response.ok) throw new Error(`${file}: ${response.status}`);
@@ -197,20 +200,10 @@ function speakBeats(line, reveal, mine) {
   Object.assign(lastSpoken, { line: line.id, via: 'speech' });
 }
 
-function say(r) {
-  if (r.spoken) return;
-  r.spoken = true;
-  clearTimeout(r.timer);
-  const views = [...r.shown.values()];
-  const kind = mostDramatic(views.map((v) => v.kind));
-  const speaker = soundOn ? views.find((v) => v.kind === kind) : null;
-  views.filter((v) => v !== speaker && v.line?.beats.length > 1)
-    .forEach((v) => later(v.reveal, estimateSeconds(v.line.beats[0]) * 1000 + v.line.gap));
-  if (!speaker?.line) return;
-  const line = { ...speaker.line, kind };
+function say(line, reveal) {
   const mine = ticket;
-  playClips(line, speaker.reveal, mine).catch(() => {
-    if (mine === ticket) speakBeats(line, speaker.reveal, mine); // no clips: the browser's voice says it
+  playClips(line, reveal, mine).catch(() => {
+    if (mine === ticket) speakBeats(line, reveal, mine); // no clips: the browser's voice says it
   });
 }
 
@@ -218,7 +211,7 @@ export function setCommentarySound(on) {
   soundOn = on;
   if (on) return;
   hush();
-  round?.shown.forEach((view) => view.reveal()); // the ticker finishes the line in silence
+  round?.reveals.forEach((reveal) => reveal()); // the ticker finishes the line in silence
 }
 
 // audio.js hands over its context, the microphone chain and the crowd level.
@@ -231,24 +224,29 @@ export function deliveryStarts(view) {
   hush();
   if (!opening) {
     opening = true;
-    clearTimeout(round?.timer);
-    round = { waiting: new Set(), shown: new Map(), spoken: false, timer: null };
+    round = { waiting: new Set(), members: new Set(), reveals: [] };
     queueMicrotask(() => { opening = false; });
   }
   round.waiting.add(view);
+  round.members.add(view);
 }
 
-// A caption showed its outcome and its first beat; `reveal` adds the second. Speaks once
-// every view in the round has shown, or after a wait for a slow one.
+// A caption showed its outcome and its first beat; `reveal` adds the second, when it is
+// spoken or, in silence, about when it would have been.
 export function outcomeShown(view, kind, length, reveal) {
-  if (!round || round.spoken || !round.waiting.has(view)) {
+  if (!round || !round.waiting.has(view)) {
     reveal();
     return;
   }
-  round.waiting.delete(view);
-  round.shown.set(view, { kind, line: lineFor(kind, length), reveal });
   const r = round;
-  r.timer ??= setTimeout(() => say(r), WAIT);
-  // with reduced motion a view can show its outcome before the next view has even started
-  queueMicrotask(() => { if (r.waiting.size === 0) say(r); });
+  r.waiting.delete(view);
+  r.reveals.push(reveal);
+  const line = lineFor(kind, length);
+  // decided once every view cleared in the same task has joined the round: with reduced
+  // motion a view shows its outcome before the next view has even started
+  queueMicrotask(() => {
+    if (r !== round) return;
+    if (soundOn && line && speechAllowed(r.members.size)) say({ ...line, kind }, reveal);
+    else if (line?.beats.length > 1) later(reveal, estimateSeconds(line.beats[0]) * 1000 + line.gap);
+  });
 }

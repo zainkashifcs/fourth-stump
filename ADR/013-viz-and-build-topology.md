@@ -20,3 +20,9 @@ The procedural meshes are replaced by flat-shaded low-poly models (batter, bowle
 - A delivery that is left or missed is drawn on past the stumps to the keeper's plane by extrapolating its last segment under gravity. That stretch is not simulated.
 - With the run-up shown, the director's last cut lands on the camera the visitor has chosen.
 - The stadium, the crowd sound and the spoken commentary are illustration. They carry no model output.
+
+## Amendment, 2026-11-27: the bat on the ball, the keeper and the outcome clips
+
+- A played ball is met where it is. In the last 0.14 s the bat's face (middled) or outside edge (edged) is steered onto the ball's position at the instant it reaches the bat, by one pure solve in `viz/js/contact.js`: the contact point may slide within the blade's middle third, the whole body shifts across and along the pitch within the body rule and bends at the knees, the bat swings about the top hand clear of the head, and both arms are re-solved onto the handle every frame. Where no believable pose reaches the ball, the solve stops as close as it can and reports the shortfall; a play-and-miss ends with the edge 8 cm inside the ball's line. The ball's flight is not changed to meet the bat.
+- The wicketkeeper stands on the keeper's plane and takes a ball that goes through at the instant the drawn path reaches him, which is also when the glove sound plays. He is not drawn from the behind-the-stumps camera: 1.4 m behind the wicket he would hide the batter, the stumps and the ball's path, which that camera exists to show. Moving the camera instead would have changed every framing the page is tested against.
+- Each outcome has its own batter clips, mapped in `viz/js/outcomes.js` by name, and a missing clip falls back to the one before it. A dismissal's look back starts when the stumps break.

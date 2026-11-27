@@ -149,23 +149,26 @@ What the calibration does and does not show:
 
 ## The visualisation
 
-A static Three.js page styled as a retro Test-match broadcast, reading trajectories precomputed by the engine. The flat-shaded low-poly models (a batter in whites with three poses, a bowler in his delivery stride, a slip, the Lord's Pavilion, the WACA scoreboard, and Table Mountain with Devil's Peak) are built by the Blender scripts in `viz/blender/` and exported as glTF to `viz/assets/`.
+A static Three.js page styled as a retro Test-match broadcast, reading trajectories precomputed by the engine. The models are in the style of a late-1990s console game: a few hundred triangles each, unfiltered pixel-art textures, and rigid skinning with one bone per body part. A batter, a bowler, a slip, the stumps, the Lord's Pavilion, the WACA scoreboard, and Table Mountain with Devil's Peak are built, painted, rigged and animated by the Python scripts in `viz/blender/` and exported as glTF to `viz/assets/`. The page plays their baked clips (run-up, bound and delivery, appeal, forward defensive, leave, edge, the stumps flying) in time with the engine's release and arrival times.
 
 ```
 cd viz && python -m http.server 8000     # then open http://localhost:8000/
 ```
 
 - **Compare venues.** The same release at the three grounds, with a ball-age slider, a bowler-arm toggle and a bowling-end toggle. "Bowl again" bowls one sampled delivery per ground and plays its outcome: middled, edged, bowled, left alone or play-and-miss. From the Pavilion End at Lord's the slope takes the ball into a right-hander; from the Nursery End, away.
-- **Test your eye.** The path after the bounce is hidden. Choose leave or play, then see the true path, the outcome and the expected value of both actions.
+- **Test your eye.** The bowler runs in through three camera cuts (behind his mark, side-on at the crease, then the batter's view), and the picture freezes at the bounce. Choose leave or play, then see the true path, the outcome and the expected value of both actions.
+- **Around it.** A teletext boot screen that tracks the real loading (skip it with any key, or `?noboot=1`), sound effects synthesised with the Web Audio API (no audio files), and a "How it works" panel.
 
 ![Test Your Eye](viz/screenshots/game.png)
 
 ![Bowled](viz/screenshots/bowled.png)
 
+![Boot screen](viz/screenshots/boot.png)
+
 The flight up to the bat is the engine's trajectory. What the ball, bat and stumps do after contact is illustration, not simulation. The ball is drawn larger than life.
 
 ```
-"<path to>/blender" --background --python viz/blender/build_all.py     # rebuild the models (Blender 5.3)
+"<path to>/blender" --background --python viz/blender/build_all.py     # rebuild the models (Blender 5.3; also runs inside an open Blender)
 ```
 
 ## Build and test
@@ -183,7 +186,7 @@ uv run python -m calibrator.run_expectancy
 uv run python -m calibrator.calibrate    # about 20 minutes
 ```
 
-Tests: 25 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 7 for the page's logic. All run offline.
+Tests: 25 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 11 for the page's logic. All run offline.
 
 | Path | Contents |
 |---|---|

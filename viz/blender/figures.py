@@ -16,7 +16,7 @@ the ground), the bat's position, and optionally `hands`, two points the hands
 reach for. A clip is a list of timed poses, sampled at every frame through a
 spline and baked, so the hands stay on the bat between the poses.
 """
-from math import asin, atan2, cos, hypot, inf, pi, sin, sqrt
+from math import cos, hypot, inf, pi, sin, sqrt
 
 import bpy
 from mathutils import Matrix, Vector
@@ -250,7 +250,10 @@ def forearm_part(shape, look):
     loft(shape, [(wrist, hexa(0.044, 0.042)), (wrist + 0.055, hexa(0.042, 0.04)), (-0.08, hexa(0.06, 0.057)),
                  (0.035, hexa(0.048, 0.05))], "cuff", ends=(None, None))
     g = -FOREARM
-    if look.get("gloves"):
+    if look.get("gloves") == "keeper":  # big webbed mitts, wide across the palm
+        loft(shape, [(g - 0.14, hexa(0.04, 0.078)), (g - 0.06, hexa(0.072, 0.115)),
+                     (g + 0.02, hexa(0.076, 0.1)), (g + 0.08, hexa(0.064, 0.064))], "kglove", ends=("cap", None))
+    elif look.get("gloves"):
         loft(shape, [(g - 0.085, hexa(0.024, 0.04)), (g - 0.04, hexa(0.04, 0.06)),
                      (g + 0.03, hexa(0.05, 0.058)), (g + 0.065, hexa(0.05, 0.05))], "glove", ends=("cap", None))
     else:
@@ -270,7 +273,13 @@ PAD = [(0.045, 0.128), (-0.045, 0.128), (-0.088, 0.07), (-0.08, 0.012), (0.08, 0
 def shin_part(shape, look):
     loft(shape, [(-0.40, hexa(0.043, 0.045)), (-0.11, hexa(0.068, 0.078, -0.01)), (0.04, hexa(0.06, 0.066))],
          "flannel", ends=(None, None))
-    if look.get("pads"):
+    if look.get("pads") == "keeper":  # lighter and shorter, with a small roll over the knee
+        light = scaled_ring(PAD, 0.85, 0.8)
+        loft(shape, [(-0.39, scaled_ring(light, 0.9, 0.9, 0.02)), (-0.12, light), (0.02, scaled_ring(light, 0.94, 0.94))],
+             "kpad", ends=("cap", None))
+        loft(shape, [(0.0, scaled_ring(light, 0.95, 1.0)), (0.07, scaled_ring(light, 1.0, 1.1))], "kneeroll",
+             ends=(None, "cap"))
+    elif look.get("pads"):
         loft(shape, [(-0.40, scaled_ring(PAD, 0.9, 0.9, 0.025)), (-0.12, PAD), (0.03, scaled_ring(PAD, 0.94, 0.94))],
              "pad", ends=("cap", None))
         roll = scaled_ring(PAD, 1.05, 1.15)
@@ -421,30 +430,25 @@ def planted(pose, plant):
     }
 
 
-def page_scale(release_height):
-    """The size bowler.js gives the figure so its hand reaches the page's release height."""
-    return min(max(PAGE_RELEASE_HEIGHT / max(release_height, 0.5), 0.85), 1.3)
-
-
-def bowling_arm(pose, ahead, near):
-    """The pose with the bowling arm straight and its hand `ahead` page metres in front of
-    the front toe and over the front foot's lane; the arm's angle is kept within a turn of
-    `near`, so the windmill keeps turning the same way."""
+def fixed_arms(pose):
+    """The pose with the arms set to the angles its `hands` targets solve to, so it
+    blends into poses whose arms are set by angle."""
     world = solve(pose)
-    shoulder = world["armR"].translation
-    toe = sole(world)[1]
-    length, size = UPPER_ARM + FOREARM, 1.0
-    for _ in range(5):  # the page's scale depends on the height the hand ends up at
-        tx, tz = toe.x, toe.z + ahead / size
-        level = (tx - shoulder.x) ** 2 + (tz - shoulder.z) ** 2
-        assert level < length ** 2, "the release point is out of the bowling arm's reach"
-        ty = shoulder.y + sqrt(length ** 2 - level)
-        size = page_scale(ty)
-    local = world["torso"].to_3x3().inverted() @ (Vector((tx, ty, tz)) - shoulder).normalized()
-    az = asin(local.x)
-    ax = atan2(-local.z / cos(az), -local.y / cos(az))
-    ax += 2 * pi * round((near - ax) / (2 * pi))
-    return {**pose, "armR": (ax, 0, az), "foreR": (0, 0, 0)}
+    out = {key: value for key, value in pose.items() if key != "hands"}
+    for side in "LR":
+        out["arm" + side] = angles(world["torso"].inverted() @ world["arm" + side])
+        out["fore" + side] = angles(world["arm" + side].inverted() @ world["fore" + side])
+    return out
+
+
+def check_continuations(clips, continues, rest):
+    """Each continuation clip's first frame is the last frame of the clip it follows, bone
+    for bone, so a page can cut from one to the other without a jump."""
+    for clip, parent in continues.items():
+        last = frames(*clips[parent], rest)[-1]
+        first = frames(*clips[clip], rest)[0]
+        worst = max(max(abs(a - b) for ra, rb in zip(last[j], first[j]) for a, b in zip(ra, rb)) for j in first)
+        assert worst < 1e-4, f"{clip} does not start where {parent} ends (off by {worst:.5f})"
 
 
 def grip_gap(pose):
@@ -543,6 +547,8 @@ def build_figure(name, look, rest_pose, extras=()):
         tail = head + TO_BLENDER @ (world[joint].to_3x3() @ Vector((0, BONE_LENGTH[joint], 0)))
         parent = EXTRA_PARENT.get(joint) or JOINTS[joint][0]
         bones[joint] = (parent, head, tail)
+        if joint == "bat":  # its Y runs down the handle to the toe, its Z is the way the face looks
+            bones[joint] += (TO_BLENDER @ (world[joint].to_3x3() @ Vector((0, 0, 1))),)
     return armature(name, bones, mesh), mesh, world
 
 
@@ -564,260 +570,10 @@ def body_edge(rig, mesh, clips, rest):
     return edge
 
 
-# Poses --------------------------------------------------------------------------
-# For the batter +Z is the off side and +X points up the pitch at the bowler; the
-# page keeps the body's edge at least 0.15 m to the leg side of middle stump and the
-# fourth-stump corridor runs out to 0.28 m on the off side, so the body is kept at
-# rig z <= 0.25 and the middle of the bat's face reaches at least 0.43 m past the body's edge.
-# Bat points are (x, height above the ground, z) of the top of the handle and the toe.
-
-BAT_LINE, BODY_LIMIT, MIN_REACH = 0.67, 0.25, 0.43
-
-STANCE = {
-    "root": (0.0, -0.12),
-    "torso": (0.3, 0.05, 0), "head": (-0.22, 1.15, 0),
-    "legL": (-0.32, 0, 0.17), "shinL": (0.5, 0, 0), "legR": (-0.32, 0, -0.17), "shinR": (0.5, 0, 0),
-    "bat_top": (0.05, 0.88, 0.12), "bat_toe": (-0.13, 0.03, 0.15), "bat_face": (1, 0, 0),
-}
-TAP = {**STANCE, "bat_top": (0.06, 0.92, 0.12), "bat_toe": (-0.15, 0.14, 0.15)}
-FLEX = {**STANCE, "torso": (0.3, 0.05, 0), "legL": (-0.4, 0, 0.17), "shinL": (0.64, 0, 0), "legR": (-0.4, 0, -0.17), "shinR": (0.64, 0, 0)}
-BACKLIFT = {**STANCE, "torso": (0.28, 0.05, 0), "bat_top": (-0.06, 1.0, 0.16), "bat_toe": (-0.45, 1.26, 0.1), "bat_face": (1, 0.3, 0)}
-
-
-def aimed(pose, line):
-    """The pose with its bat slid across so the middle of the face is at rig z `line`."""
-    middle = bat_transform(pose) @ Vector((0, -HANDLE - BLADE / 2, BAT_FACE))
-    dz = line - middle.z
-    return {**pose, "bat_top": (pose["bat_top"][0], pose["bat_top"][1], pose["bat_top"][2] + dz),
-            "bat_toe": (pose["bat_toe"][0], pose["bat_toe"][1], pose["bat_toe"][2] + dz)}
-
-
-# A long front stride down the pitch with the front knee over the foot, the trunk leaning
-# towards the bowler (not out over the off side), and the bat angled down from hands held
-# out ahead of the blade, its toe no wider than the hands.
-FORWARD_DEFENSIVE = aimed({
-    "root": (0.2, -0.033),
-    "torso": (0.225, 0.012, -0.306), "head": (-0.5, 1.09, 0.2),
-    "legL": (0.0, 0, 0.846), "shinL": (0.7, 0, -0.677), "legR": (0.02, 0, -0.784), "shinR": (0.1, 0, 0),
-    "bat_top": (0.307, 1.042, 0.6), "bat_toe": (-0.105, 0.287, 0.6), "bat_face": (1, -0.3, 0), "pole": (0.3, -1, 0.2),
-}, BAT_LINE)
-
-# Bat lifted high over the front shoulder, the head left where it was, letting the ball go.
-# The bat comes up in front of the front shoulder and tips back on the bowler's side
-# of the head, so it never crosses the head or cap.
-LEAVE_LIFT = {
-    **STANCE, "torso": (0.3, 0.12, 0), "head": (-0.22, 1.08, 0),
-    "bat_top": (0.2, 1.08, 0.27), "bat_toe": (-0.55, 1.36, 0.33), "bat_face": (0.2, 0.4, 1), "pole": (0.5, -0.8, 0.3),
-}
-LEAVE_RISE = {
-    **LEAVE_LIFT, "torso": (0.3, 0.2, 0), "head": (-0.22, 1.0, 0),
-    "bat_top": (0.35, 1.29, 0.36), "bat_toe": (0.43, 2.09, 0.27), "bat_face": (1, 0, 0.3), "pole": (0.6, -0.6, 0.5),
-}
-# the hands held well out towards the bowler and the off side, so from behind the stumps the gloves stay clear
-# of the head; the shoulders turn a little towards the bowler so the bottom hand reaches across
-SHOULDERING_ARMS = {
-    **LEAVE_RISE, "torso": (0.3, 0.25, 0), "head": (-0.22, 0.95, 0),
-    "bat_top": (0.38, 1.36, 0.42), "bat_toe": (0.26, 2.14, 0.0), "pole": (0.4, -0.7, 0.8),
-}
-
-# The same stride with the hands pushed a little further out and the face of the bat
-# opened; then the head turns to follow the edge.
-EDGE_PUSH = aimed({
-    **FORWARD_DEFENSIVE, "root": (0.18, -0.04),
-    "bat_top": (0.27, 1.05, 0.6), "bat_toe": (-0.07, 0.25, 0.6), "bat_face": (1, -0.2, 0.4),
-}, BAT_LINE)
-EDGE_LOOK = {**EDGE_PUSH, "head": (-0.5, 0.6, 0.2)}
-
-CONTACT_TIME = 0.3  # into Forward_Defensive and Edge_Flash, when the bat meets the ball
-
-BATTER_CLIPS = {
-    "Forward_Defensive": ([(0, STANCE), (0.13, BACKLIFT), (CONTACT_TIME, FORWARD_DEFENSIVE), (0.6, FORWARD_DEFENSIVE)], False),
-    "Leave_Shoulder_Arms": ([(0, STANCE), (0.12, LEAVE_LIFT), (0.25, LEAVE_RISE), (0.4, SHOULDERING_ARMS),
-                             (0.6, SHOULDERING_ARMS)], False),
-    "Edge_Flash": ([(0, STANCE), (0.13, BACKLIFT), (CONTACT_TIME, EDGE_PUSH), (0.45, EDGE_PUSH), (0.65, EDGE_LOOK), (0.8, EDGE_LOOK)], False),
-    # the idle goes on last, so it is also the pose the file opens in
-    "Idle_Stance": ([(0, STANCE), (0.3, TAP), (0.6, STANCE), (0.9, FLEX), (1.2, STANCE)], True),
-}
-
-# A right-armer. The bowling arm's X angle runs on past a full turn: down is 0,
-# straight back is pi/2, over the top is pi.
-RUN = {
-    "torso": (0.3, -0.15, 0), "head": (-0.25, 0.1, 0),
-    "legL": (-0.8, 0, 0), "shinL": (0.35, 0, 0), "legR": (0.45, 0, 0), "shinR": (1.2, 0, 0), "footL": (-0.2, 0, 0), "footR": (0.9, 0, 0),
-    "armR": (-0.7, 0, 0), "foreR": (-1.3, 0, 0), "armL": (0.6, 0, 0), "foreL": (-1.2, 0, 0),
-}
-RUN_PASS = {
-    "lift": (0.06,), "torso": (0.3, 0, 0), "head": (-0.25, 0, 0),
-    "legL": (0, 0, 0), "shinL": (0.3, 0, 0), "legR": (-0.3, 0, 0), "shinR": (1.6, 0, 0), "footR": (0.5, 0, 0),
-    "armR": (-0.05, 0, 0), "foreR": (-1.3, 0, 0), "armL": (0, 0, 0), "foreL": (-1.3, 0, 0),
-}
-GATHER = {  # the bound: off the ground, ball by the chin, front arm climbing
-    "lift": (0.22,), "hips": (0, -0.3, 0), "torso": (0.05, -0.5, 0), "head": (-0.05, 0.7, 0),
-    "legL": (-0.5, 0, 0), "shinL": (0.9, 0, 0), "legR": (-0.9, 0, 0), "shinR": (1.5, 0, 0),
-    "armL": (-2.2, 0, 0.2), "foreL": (-0.5, 0, 0), "armR": (-1.2, 0, 0), "foreR": (-1.9, 0, 0),
-}
-BACK_FOOT = {  # landed on the back foot, leaning away, front arm high, bowling arm low behind
-    "hips": (0, -0.35, 0), "torso": (-0.12, -0.6, 0), "head": (0.05, 0.9, 0),
-    "legR": (0.05, 0, 0), "shinR": (0.3, 0, 0), "legL": (-1.0, 0, 0), "shinL": (0.7, 0, 0),
-    "armL": (-2.8, 0, 0.1), "foreL": (-0.15, 0, 0), "armR": (0.9, 0, -0.1), "foreR": (-0.15, 0, 0),
-}
-# The front foot lands at plant_time on FRONT_FOOT (its ankle, from the root, and its turn)
-# and stays there, flat, through the release and the follow-through. The page stands the
-# figure so the release bone is on the ball's first point, so where the foot is relative
-# to the hand decides the no-ball: the toe is FOOT_BEHIND (page metres) behind the hand.
-# Over the wicket, the hand is over the front foot's lane and the body to its left (+X).
-PAGE_RELEASE_HEIGHT = 2.08  # the ball's first point above the ground, which bowler.js scales the hand to
-FOOT_BEHIND, FOOT_BEHIND_RANGE = 0.17, (0.12, 0.22)
-FRONT_FOOT = (-0.2, 0.2, 0.0)
-PLANT = planted({  # front foot down, front arm pulling in, bowling arm coming up behind
-    "hips": (0, -0.1, 0), "torso": (0.15, -0.15, -0.08), "head": (-0.15, 0.2, 0),
-    "legL": (-0.4, 0, -0.25), "shinL": (0.25, 0, 0), "legR": (0.3, 0, 0), "shinR": (0.7, 0, 0),
-    "armL": (-1.2, 0, 0.2), "foreL": (-1.0, 0, 0), "armR": (2.2, 0, 0.1), "foreR": (-0.05, 0, 0),
-}, FRONT_FOOT)
-RELEASE = bowling_arm(planted({  # front leg braced, trunk over it and tilted away from the arm, arm straight beside the head
-    "torso": (0.38, 0.2, -0.1), "head": (-0.3, -0.15, 0.05),
-    "legL": (-0.22, 0, -0.3), "shinL": (0.03, 0, 0), "legR": (0.5, 0, 0), "shinR": (0.9, 0, 0),
-    "armL": (0.55, 0, 0.3), "foreL": (-1.3, 0, 0),
-}, FRONT_FOOT), FOOT_BEHIND, 2 * pi - 3.05)
-FOLLOW = planted({  # the arm finishes across the body, the back leg swings through, the front foot still down
-    "hips": (0, 0.3, 0), "torso": (0.85, 0.5, 0), "head": (-0.6, -0.3, 0),
-    "legR": (-0.9, 0, 0), "shinR": (1.0, 0, 0), "legL": (-0.1, 0, -0.2), "shinL": (0.15, 0, 0),
-    "armR": (5.2, 0, -0.3), "foreR": (-0.3, 0, 0), "armL": (1.0, 0, 0.2), "foreL": (-0.8, 0, 0),
-}, FRONT_FOOT)
-RECOVER = {
-    "torso": (0.4, 0.1, 0), "head": (-0.3, 0, 0),
-    "legR": (-0.3, 0, 0), "shinR": (0.4, 0, 0), "legL": (0.5, 0, 0), "shinL": (1.0, 0, 0),
-    "armR": (6.0, 0, 0), "foreR": (-0.6, 0, 0), "armL": (-0.3, 0, 0), "foreL": (-0.9, 0, 0),
-}
-SETTLE = {
-    "torso": (0.15, 0, 0), "head": (-0.1, 0, 0),
-    "legL": (-0.15, 0, 0), "shinL": (0.2, 0, 0), "legR": (0.1, 0, 0), "shinR": (0.25, 0, 0),
-    "armR": (2 * pi - 0.1, 0, 0), "foreR": (-0.4, 0, 0), "armL": (0.1, 0, 0), "foreL": (-0.4, 0, 0),
-}
-# The appeal starts where the delivery ends, the bowling arm one turn on.
-SPRING = {
-    "torso": (0.35, 0, 0), "head": (-0.2, 0, 0),
-    "legL": (-0.6, 0, 0.05), "shinL": (1.0, 0, 0), "legR": (-0.6, 0, -0.05), "shinR": (1.0, 0, 0),
-    "armR": (2 * pi + 0.5, 0, -0.1), "foreR": (-0.3, 0, 0), "armL": (0.5, 0, 0.1), "foreL": (-0.3, 0, 0),
-}
-LEAP = {
-    "lift": (0.28,), "torso": (-0.2, 0, 0), "head": (-0.3, 0, 0),
-    "legL": (0.1, 0, 0.08), "shinL": (0.7, 0, 0), "legR": (0.1, 0, -0.08), "shinR": (0.7, 0, 0),
-    "armR": (2 * pi - 2.9, 0, -0.3), "foreR": (-0.1, 0, 0), "armL": (-2.9, 0, 0.3), "foreL": (-0.1, 0, 0),
-}
-ARMS_UP = {
-    "torso": (-0.1, 0, 0), "head": (-0.25, 0, 0),
-    "legL": (-0.3, 0, 0.08), "shinL": (0.55, 0, 0), "legR": (-0.3, 0, -0.08), "shinR": (0.55, 0, 0),
-    "armR": (2 * pi - 2.8, 0, -0.35), "foreR": (-0.25, 0, 0), "armL": (-2.8, 0, 0.35), "foreL": (-0.25, 0, 0),
-}
-ARMS_HIGH = {**ARMS_UP, "legL": (-0.08, 0, 0.08), "shinL": (0.15, 0, 0), "legR": (-0.08, 0, -0.08), "shinR": (0.15, 0, 0)}
-
-RELEASE_TIME, PLANT_TIME = 0.55, 0.45  # into Bound_And_Deliver
-
-BOWLER_CLIPS = {
-    "RunUp_Stride": ([(0, RUN), (0.1, RUN_PASS), (0.2, mirrored(RUN)), (0.3, mirrored(RUN_PASS)), (0.4, RUN)], True),
-    "Appeal_Celebrate": ([(0, SETTLE), (0.25, SPRING), (0.5, LEAP), (0.75, ARMS_UP), (1.0, ARMS_HIGH)], False),
-    "Bound_And_Deliver": ([(0, RUN), (0.15, GATHER), (0.3, BACK_FOOT), (PLANT_TIME, PLANT), (RELEASE_TIME, RELEASE),
-                           (0.75, FOLLOW), (1.0, RECOVER), (1.2, SETTLE)], False),
-}
-
-# First slip: a deep, wide crouch, hands cupped low in front, weight rocking side to side.
-CROUCH = {
-    "torso": (1.0, 0, 0), "head": (-0.9, 0, 0),
-    "legL": (-1.1, 0, 0.42), "shinL": (1.65, 0, 0), "legR": (-1.1, 0, -0.42), "shinR": (1.65, 0, 0),
-    "hands": ((0.09, 0.42, 0.5), (-0.09, 0.42, 0.5)),
-}
-CROUCH_LEFT = {**CROUCH, "root": (0.035, 0), "lift": (0.01,), "torso": (1.0, 0.05, -0.07), "head": (-0.9, -0.04, 0.06),
-               "legL": (-1.16, 0, 0.36), "shinL": (1.75, 0, 0), "legR": (-1.04, 0, -0.46), "shinR": (1.55, 0, 0),
-               "hands": ((0.12, 0.43, 0.51), (-0.06, 0.42, 0.5))}
-SLIP_CLIPS = {"Idle_Crouch": ([(0, CROUCH), (0.6, CROUCH_LEFT), (1.2, CROUCH), (1.8, mirrored(CROUCH_LEFT)), (2.4, CROUCH)], True)}
-
-# A ring fielder walking in: half crouched, hands low and ready, rocking from foot to foot.
-READY = {
-    "torso": (0.52, 0, 0), "head": (-0.44, 0, 0),
-    "legL": (-0.6, 0, 0.14), "shinL": (0.9, 0, 0), "legR": (-0.6, 0, -0.14), "shinR": (0.9, 0, 0),
-    "hands": ((0.11, 0.66, 0.42), (-0.11, 0.66, 0.42)),
-}
-READY_LEFT = {**READY, "root": (0.03, 0.02), "lift": (0.015,), "torso": (0.52, 0.06, -0.05), "head": (-0.44, -0.05, 0.04),
-              "legL": (-0.68, 0, 0.12), "shinL": (1.0, 0, 0), "legR": (-0.45, 0, -0.16), "shinR": (0.8, 0, 0),
-              "hands": ((0.13, 0.67, 0.44), (-0.08, 0.66, 0.42))}
-FIELDER_CLIPS = {"Idle_Crouch": ([(0, READY), (0.4, READY_LEFT), (0.8, READY), (1.2, mirrored(READY_LEFT)), (1.6, READY)], True)}
-
-
-# The four figures -----------------------------------------------------------------
-
-def _look(figure, **kit):
+def look_for(figure, **kit):
     return {"face": figure, **FACES[figure], **kit}
 
 
-def _bake_all(rig, clips, rest):
+def bake_all(rig, clips, rest):
     for clip, (keys, loop) in clips.items():
         bake(rig, clip, frames(keys, loop, rest))
-
-
-def build_batter(bat_half_width):
-    """A right-hander in a cap, with Idle_Stance, Forward_Defensive,
-    Leave_Shoulder_Arms and Edge_Flash; bat_line and body_edge measured."""
-    rig, mesh, rest = build_figure("batter", _look("batter", hat="cap", pads=True, gloves=True, bat=bat_half_width), STANCE, ["bat"])
-    for clip, (keys, loop) in BATTER_CLIPS.items():
-        for i in range(round(keys[-1][0] * FPS) + 1):
-            gap = grip_gap(sample(keys, i / FPS, loop))
-            assert gap <= GRIP_TOLERANCE, f"{clip} frame {i}: a hand is {gap * 100:.1f} cm off the handle (out of reach)"
-    edge = body_edge(rig, mesh, BATTER_CLIPS.values(), rest)
-    assert edge <= BODY_LIMIT, f"the batter's body reaches rig z {edge:.3f}, past {BODY_LIMIT}"
-    contact = solve(sample(BATTER_CLIPS["Forward_Defensive"][0], CONTACT_TIME, False))
-    line = (contact["bat"] @ Vector((0, -HANDLE - BLADE / 2, BAT_FACE))).z
-    assert abs(line - BAT_LINE) < 0.02, f"the bat meets the ball at rig z {line:.3f}, not {BAT_LINE}"
-    assert line - edge >= MIN_REACH, f"the bat reaches only {line - edge:.3f} m past the body, not {MIN_REACH}"
-    _bake_all(rig, BATTER_CLIPS, rest)
-    rig["contact_time"] = CONTACT_TIME
-    rig["bat_line"] = round(line, 3)
-    rig["body_edge"] = round(edge, 3)
-
-
-def build_bowler():
-    """A right-arm fast bowler with RunUp_Stride, Bound_And_Deliver and
-    Appeal_Celebrate, and a bone called `release` in the bowling hand."""
-    rig, _, rest = build_figure("bowler", _look("bowler", hat="none"), RUN, ["release"])
-    behind, height, lane = delivery_checks()
-    _bake_all(rig, BOWLER_CLIPS, rest)
-    rig["release_time"] = RELEASE_TIME
-    rig["plant_time"] = PLANT_TIME
-    rig["front_foot_behind_release"] = round(behind, 3)
-    rig["release_height"] = round(height, 3)
-    print(f"bowler: toe {behind:.3f} m behind the hand at the page's scale {page_scale(height):.3f}, "
-          f"hand {height:.3f} m up and {lane:.3f} m to the right of the body's centre line")
-
-
-def delivery_checks():
-    """Asserts the front foot lands flat at plant_time and stays put to the release, with
-    its toe FOOT_BEHIND behind the hand. Returns that distance (page metres), the release
-    bone's height, and how far the hand is to the right of the hips (rig X)."""
-    keys = BOWLER_CLIPS["Bound_And_Deliver"][0]
-    at_release = solve(sample(keys, RELEASE_TIME, False))
-    hand = at_release["release"].translation
-    behind = (hand.z - sole(at_release)[1].z) * page_scale(hand.y)
-    low, high = FOOT_BEHIND_RANGE
-    assert low <= behind <= high, f"the front toe is {behind:.3f} m behind the hand at release, not {low} to {high}"
-    landed = sole(solve(sample(keys, PLANT_TIME, False)))
-    times = [PLANT_TIME + (RELEASE_TIME - PLANT_TIME) * i / 20 for i in range(21)]
-    times += [i / FPS for i in range(round(PLANT_TIME * FPS), round(RELEASE_TIME * FPS) + 1) if PLANT_TIME <= i / FPS <= RELEASE_TIME]
-    for t in times:
-        points = sole(solve(sample(keys, t, False)))
-        assert all(abs(p.y) <= 0.01 for p in points), f"the front sole is off the ground at {t:.3f} s"
-        moved = max((p - q).length for p, q in zip(points, landed))
-        assert moved <= 0.01, f"the front foot has moved {moved * 100:.1f} cm by {t:.3f} s"
-    return behind, hand.y, at_release["hips"].translation.x - hand.x
-
-
-def build_slip():
-    """First slip in a sun hat, crouched (also the bind pose), with Idle_Crouch and
-    a bone called `catch` between the hands."""
-    rig, _, rest = build_figure("slip", _look("slip", hat="sunhat"), CROUCH, ["catch"])
-    _bake_all(rig, SLIP_CLIPS, rest)
-
-
-def build_fielder():
-    """A ring fielder (cover or mid-off) in a cap, walking in, with Idle_Crouch."""
-    rig, _, rest = build_figure("fielder", _look("fielder", hat="cap"), READY, ["catch"])
-    _bake_all(rig, FIELDER_CLIPS, rest)

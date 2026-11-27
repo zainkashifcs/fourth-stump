@@ -263,15 +263,18 @@ def scaled(matrix, x, y, z):
 
 def armature(name, bones, mesh):
     """An armature called `name` that carries `mesh`. `bones` is
-    { bone: (parent, head, tail) } in armature space, parents first. Each bone's
-    joint frame is a plain translation to its head."""
+    { bone: (parent, head, tail) } in armature space, parents first, or
+    (parent, head, tail, z) to turn the bone about its length until its Z axis
+    points along `z`."""
     data = bpy.data.armatures.new(name)
     rig = link(bpy.data.objects.new(name, data))
     bpy.context.view_layer.objects.active = rig
     bpy.ops.object.mode_set(mode="EDIT")
-    for bone, (parent, head, tail) in bones.items():
+    for bone, (parent, head, tail, *z) in bones.items():
         edit = data.edit_bones.new(bone)
         edit.head, edit.tail = head, tail
+        if z:
+            edit.align_roll(z[0])
         if parent:
             edit.parent = data.edit_bones[parent]
     bpy.ops.object.mode_set(mode="OBJECT")

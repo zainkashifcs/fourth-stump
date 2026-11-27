@@ -17,6 +17,7 @@ CREAM, FLANNEL, NAVY, CRIMSON, SHIRT = 0xF1E2BC, 0xF4F0E2, 0x1F2F66, 0xA81E34, 0
 CAP_GREEN, GOLD, HAT_WHITE, UNDER_BRIM = 0x1E4F35, 0xE8B634, 0xEEEADA, 0x2F6B3C
 WILLOW, GRIP, ASH, BAIL = 0xEDD59C, 0xA01C2E, 0xE4D1A2, 0xD9A75A
 PAD_WHITE, BUFF, SOLE, STEEL, LEATHER, SAUSAGE = 0xF1F1EB, 0xC99F64, 0x3A3A42, 0xB8BCC6, 0xF3F2EC, 0x3C8C58
+PALM = 0xB5814E
 LASH, EYE_WHITE, LIP = 0x2A1A14, 0xF6F2EA, 0x9A4A44
 SKINS = {"fair": 0xEDB894, "tan": 0xD49B6C, "brown": 0x9A6342}
 HAIRS = {"brown": 0x4C3322, "black": 0x24211F, "blond": 0xD3A85C, "auburn": 0x8C4624}
@@ -195,10 +196,12 @@ def hair(color):
     return tile(front=locks(16, 24, 3, 0), back=locks(24, 32, 4, -1), cap=crown)
 
 
-def face(skin_color, hair_color, eye_color, hair_name, moustache=False, zinc=False, stubble=False, long_hair=False):
+def face(skin_color, hair_color, eye_color, hair_name, moustache=False, zinc=False, stubble=False, long_hair=False,
+         share=None):
     """A head: a big painted face on the front (40x48, rows run from the crown at
     y 0.36 to the chin at y 0.05 in the head's frame), an ear and sideburn on each
-    side, the back of the head with the nape, and the crown from the hair tile."""
+    side, the back of the head with the nape, and the crown from the hair tile.
+    With `share`, only the front is painted and the sides and back are that figure's."""
     hair_tone = tone(hair_color)
     front = canvas(40, 48, skin_color)
     shade(front, S[:, 0:4], -1)
@@ -296,6 +299,8 @@ def face(skin_color, hair_color, eye_color, hair_name, moustache=False, zinc=Fal
     shade(back, (rows >= zig) & (rows < zig + 3) & (cols % 4 != 3), 1)
     shade(back, (rows > 9) & (rows < nape + 2) & (cols % 5 == 2), -1)
     shade(back, S[nape + 2:, :], -1)
+    if share:
+        side, back = (f"face_{share}", "side"), (f"face_{share}", "back")
     return tile(front=front, side=side, back=back, cap=(f"hair_{hair_name}", "cap"))
 
 
@@ -448,6 +453,42 @@ def glove():
     return tile(front=front, back=back, cap=canvas(8, 8, LEATHER, -1))
 
 
+def keeper_glove():
+    """A wicketkeeper's mitt: white backs with a navy band, tan leather palms dimpled
+    with rubber pips, the web between thumb and finger darker."""
+    front = canvas(16, 24, LEATHER)
+    front[1:4] = tone(NAVY)
+    shade(front, S[0, :], -1)
+    shade(front, S[:, 0], -1)
+    shade(front, S[:, 15], -1)
+    shade(front, S[9:22, 5::5], -1)  # stitched finger stalls
+    shade(front, S[21:24, :], -1)
+    back = canvas(16, 24, PALM)
+    back[1:4] = tone(NAVY, -1)
+    back[6:23:3, 1:15:3] = tone(PALM, -2)  # the pips
+    back[6:12, 12:16] = tone(PALM, -2)  # the web
+    shade(back, S[22:24, :], -1)
+    return tile(front=front, back=back, cap=canvas(4, 4, LEATHER, -1))
+
+
+def keeper_pad():
+    """A keeper's lighter pad: three broad canes, buff straps round the side."""
+    front = canvas(16, 40, PAD_WHITE)
+    rows, cols = grid(front)
+    m = (cols + 1) % 6
+    body = rows < 35
+    shade(front, body & (m == 0), -2)
+    shade(front, body & ((m == 1) | (m == 2)), 1)
+    shade(front, body & (m == 5), -1)
+    shade(front, S[35, :], -2)
+    shade(front, S[0, :], -1)
+    side = canvas(8, 40, PAD_WHITE, -1)
+    for r in (8, 25):
+        side[r:r + 4] = tone(BUFF)
+        side[r + 1:r + 3, 3:5] = tone(STEEL, 1)
+    return tile(front=front, side=side, back=("kpad", "side"))
+
+
 def boot():
     """White spiked boots: laces over the instep (rows 0-10), the toe box, a welt and a dark sole."""
     front = canvas(32, 24, LEATHER)
@@ -582,6 +623,7 @@ FACES = {
     "bowler": dict(skin="tan", hair="black", eyes="brown", moustache=True, stubble=True, long_hair=True),
     "slip": dict(skin="fair", hair="blond", eyes="green", zinc=True),
     "fielder": dict(skin="brown", hair="black", eyes="brown"),
+    "keeper": dict(skin="fair", hair="brown", eyes="green", moustache=True, stubble=True, share="batter"),
 }
 
 
@@ -592,7 +634,7 @@ def kit_atlas():
         ("cap", test_cap()), ("peak", cap_peak()), ("sunhat", sun_hat()), ("brim", brim()),
         ("pad", pad()), ("kneeroll", knee_roll()), ("glove", glove()), ("boot", boot()),
         ("blade", blade()), ("grip", bat_grip()), ("flannel", flannels()), ("seat", trousers_seat()),
-        ("ash", wood(ASH)), ("bail", bail_wood()),
+        ("ash", wood(ASH)), ("bail", bail_wood()), ("kglove", keeper_glove()), ("kpad", keeper_pad()),
     ]
     painters += [(f"skin_{name}", skin(color)) for name, color in SKINS.items()]
     used_hair = sorted({spec["hair"] for spec in FACES.values()})

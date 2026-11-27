@@ -1,12 +1,13 @@
 // Python binding: a thin caller of the engine header (ADR-012). NumPy arrays in and out.
+// pybind11 first: Python.h sets feature-test macros and must come before any standard header.
+#include <pybind11/numpy.h>
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
+
 #include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
-
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
 #include "fourth_stump_envelope.hpp"
 

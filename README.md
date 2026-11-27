@@ -1,6 +1,6 @@
 # Fourth Stump EV
 
-A deterministic, zero-allocation C++20 Monte Carlo engine that simulates 31 million cricket deliveries per second, with a closed-form trajectory kernel checked against an RK4 reference to a measured error bound of 8 mm.
+A deterministic, zero-allocation C++20 Monte Carlo engine that simulates 30 million cricket deliveries per second on a laptop in everyday use, with a closed-form trajectory kernel checked against an RK4 reference to a measured error bound of 8 mm.
 
 It answers one question. A fast bowler lands the ball just outside off stump, in the "fourth-stump corridor". Should the batter leave it or play it? The answer depends on the ground: the same release swings at Lord's, bounces over the stumps at the WACA in Perth and seams at Newlands.
 
@@ -10,15 +10,19 @@ It answers one question. A fast bowler lands the ball just outside off stump, in
 
 | Claim | Measured | How it is checked |
 |---|---|---|
-| Throughput | 30.8 million deliveries per second on 16 threads, 3.1 million on one (no wind); 19.3 million and 1.9 million with wind | `make bench` |
+| Throughput | 29.7 million deliveries per second on 16 threads, 2.9 million on one (no wind); 18.8 million and 1.8 million with wind | `make bench` |
 | Kernel error against RK4 | worst case 5.3 mm over the whole envelope, 1.5 mm at typical swing; published bound 8 mm | `make error-bound`, plus a random search in the tests |
-| Kernel speed | 17 times faster than RK4 at equal accuracy (168 times faster than RK4 at a 1 ms step) | `make bench` |
-| Deterministic | bit-identical output on 1, 4 and 16 threads from one binary | C++ and Python tests |
-| Zero allocation | no call to `operator new` inside `simulate_batch` | a test that replaces global `operator new` |
+| Kernel speed | 17 times faster than RK4 at equal accuracy (167 times faster than RK4 at a 1 ms step) | `make bench` |
+| Deterministic | bit-identical output on 1, 4 and 16 threads from one binary, under either random-number policy | C++ and Python tests |
+| Zero allocation | no call to `operator new` inside `simulate_batch`, under either random-number policy | a test that replaces global `operator new` |
+| Tail latency | one 100,000-delivery batch on 16 threads: p50 3.2 ms, p99 5.1 ms, p99.9 11.4 ms | `make latency` |
+| Zero-copy binding | `Batch.simulate` returns read-only NumPy views of reused 64-byte-aligned storage, with the GIL released; 4 to 7 ns per delivery less than allocating new arrays per call (median of three runs) | `make bench-ipc`, Python tests |
 
 Machine: Intel Core i5-13450HX (10 cores, 16 threads), Windows 11, g++ 16.2 (MSYS2 UCRT64).
 Flags: `-std=c++20 -O3 -march=native -ffp-contract=off -fopenmp`. No `-ffast-math`.
 `-march=native` means these figures belong to this machine.
+
+Measured on 27 November 2026 with a browser and a game open: about 5 to 15% total CPU load, Balanced power plan, on mains, with Windows power throttling (EcoQoS) opted out. The benchmark tools opt out of power throttling themselves, because it otherwise slowed a process started from a background shell by more than three times a few seconds into a run. Every benchmark ran three times; each figure is the median of the three, and the runs agreed within 5% except where a range is given. Earlier figures on the same machine idle were 30.8 million deliveries per second on 16 threads and 3.1 million on one. Earlier the same day, in the same conditions, single-thread batches ran about 45% slower (about 500 ns per delivery) on every core. The old and new headers timed the same back to back then, so that was the machine's state, not the code.
 
 Each delivery in the throughput figure is the full pipeline: three normal draws, two flight legs, the bounce, the batter's expected arrival, and the outcome of both leaving and playing.
 
@@ -83,11 +87,11 @@ One thread, the same 4,000 deliveries, with wind. "Worst error" is against RK4 a
 
 | Trajectory method | ns per delivery | Worst error (mm) | Kernel speed-up |
 |---|---|---|---|
-| Closed-form kernel | 220 | 0.403 | 1x |
-| RK4, 20 ms step | 1,871 | 0.551 | 9x |
-| RK4, 10 ms step | 3,735 | 0.137 | 17x |
-| RK4, 5 ms step | 7,422 | 0.035 | 34x |
-| RK4, 1 ms step | 36,916 | 0.001 | 168x |
+| Closed-form kernel | 218 | 0.403 | 1x |
+| RK4, 20 ms step | 1,858 | 0.551 | 9x |
+| RK4, 10 ms step | 3,673 | 0.137 | 17x |
+| RK4, 5 ms step | 7,356 | 0.035 | 34x |
+| RK4, 1 ms step | 36,356 | 0.001 | 167x |
 
 The honest comparison is the 10 ms row: the coarsest RK4 step that is at least as accurate as the kernel on these deliveries. The larger figures compare against an RK4 that is far more accurate than the kernel.
 
@@ -95,23 +99,100 @@ The honest comparison is the 10 ms row: the coarsest RK4 step that is at least a
 
 | Conditions | Batch size | Threads | Median ns per delivery | Million deliveries per second |
 |---|---|---|---|---|
-| No wind | 4,096 | 1 | 328.8 | 3.0 |
-| No wind | 4,096 | 16 | 78.3 | 12.8 |
-| No wind | 65,536 | 1 | 331.1 | 3.0 |
-| No wind | 65,536 | 16 | 39.5 | 25.3 |
-| No wind | 1,048,576 | 1 | 325.4 | 3.1 |
-| No wind | 1,048,576 | 16 | 33.7 | 29.7 |
-| No wind | 4,194,304 | 1 | 326.6 | 3.1 |
-| No wind | 4,194,304 | 16 | 32.5 | 30.8 |
-| Wind (4, 1) m/s | 1,048,576 | 1 | 538.6 | 1.9 |
-| Wind (4, 1) m/s | 1,048,576 | 16 | 51.9 | 19.3 |
+| No wind | 4,096 | 1 | 345.6 | 2.9 |
+| No wind | 4,096 | 16 | 61.1 | 16.4 |
+| No wind | 65,536 | 1 | 343.4 | 2.9 |
+| No wind | 65,536 | 16 | 43.4 | 23.0 |
+| No wind | 1,048,576 | 1 | 342.0 | 2.9 |
+| No wind | 1,048,576 | 16 | 34.4 | 29.1 |
+| No wind | 4,194,304 | 1 | 341.5 | 2.9 |
+| No wind | 4,194,304 | 16 | 33.7 | 29.7 |
+| Wind (4, 1) m/s | 1,048,576 | 1 | 549.0 | 1.8 |
+| Wind (4, 1) m/s | 1,048,576 | 16 | 53.3 | 18.8 |
+
+Default random-number policy, median of three runs. On 16 threads some rows moved between runs: 57.8 to 70.9 ns at 4,096 deliveries, 37.4 to 48.7 ns at 65,536, and 50.7 to 54.2 ns with wind. The earlier idle-machine figures for this table were 30.8 million per second at 4,194,304 deliveries on 16 threads and 3.1 million on one.
 
 ## Engineering choices
 
-- **Determinism.** Each delivery's xoshiro256\*\* stream is a function of the seed and the delivery's index only, never of a thread. Per-delivery streams are required, not just convenient: Ziggurat sampling rejects, so deliveries consume a varying number of draws. Results are written by index and totals are integer counts. The promise is bit-reproducible across thread counts on one binary, and statistically reproducible across platforms, because the platform `exp` can differ in the last bit.
+- **Determinism.** Each delivery's xoshiro256\*\* stream (or, under the second random-number policy, its Philox counter) is a function of the seed and the delivery's index only, never of a thread. Per-delivery streams are required, not just convenient: Ziggurat sampling rejects, so deliveries consume a varying number of draws. Results are written by index and totals are integer counts. The promise is bit-reproducible across thread counts on one binary, and statistically reproducible across platforms, because the platform `exp` can differ in the last bit.
 - **Zero allocation.** The caller owns 64-byte-aligned structure-of-arrays buffers; the engine writes into them. The test sees `operator new` only: it cannot see `malloc` calls inside the OpenMP runtime, so it warms the runtime up first and runs at a fixed thread count.
 - **Common random numbers.** Measured in the tests: comparing two nearby conditions on the same seed cuts the variance of the difference by about 30 times against independent seeds. Comparing leave with play on the same deliveries cuts it by about 1.3 times.
 - **Header-only.** The engine is one header with no dependencies. OpenMP is optional at compile time.
+
+## Systems
+
+### Two random-number policies
+
+`simulate_batch` takes the random-number policy as a template parameter (ADR-014). The default, xoshiro256\*\* seeded per delivery with Ziggurat normals, is the one calibration ran on, and its output is bit-identical to what it was before the parameter existed. `simulate_batch<PhiloxBoxMuller>` instead keys the counter-based Philox4x32-10 generator with the seed, puts the delivery index in the counter, and turns its four 32-bit outputs into normals with Box-Muller. Both policies draw 64 deliveries at a time into aligned arrays on the thread's stack, then run the kernel over them.
+
+Full pipeline, 1,048,576 deliveries per batch, with the two policies alternating repetition by repetition so that any drift in the machine hits both:
+
+| Conditions | Threads | xoshiro256\*\* + Ziggurat (ns per delivery) | Philox4x32-10 + Box-Muller (ns per delivery) | Philox / xoshiro |
+|---|---|---|---|---|
+| No wind | 1 | 339.8 | 333.8 | 0.98 |
+| No wind | 16 | 37.2 | 36.9 | 0.99 |
+| Wind (4, 1) m/s | 1 | 548.8 | 539.3 | 0.98 |
+| Wind (4, 1) m/s | 16 | 51.9 | 51.8 | 1.00 |
+
+| Draws alone, 1 thread | xoshiro256\*\* + Ziggurat | Philox4x32-10 + Box-Muller | Philox / xoshiro |
+|---|---|---|---|
+| ns per delivery (3 normals) | 15.1 | 14.1 | 0.93 |
+| ns per normal | 5.04 | 4.71 | 0.93 |
+
+Each cell is the median of three runs. On 16 threads with wind the runs ranged from 51.3 to 57.7 ns for xoshiro and from 51.5 to 56.0 ns for Philox, but within each run the ratio stayed between 0.97 and 1.00 on every row. The counter-based policy is not faster end to end in any way that matters. The draws are about 4% of a delivery (about 15 ns of 340). The Philox pipeline came out 0 to 2% faster, a little more than the 1 ns its cheaper draws explain. Pinned to one core, its draws were 5% dearer, not cheaper (table below). Either way, the policy barely moves throughput.
+
+What vectorises, from `-fopt-info-vec` and from scalar and vectorised builds of the same code pinned to one performance core (mean of two runs):
+
+| Draw stage, ns per delivery | Scalar | Vectorised (AVX2) |
+|---|---|---|
+| Philox4x32-10 generator | 8.0 | 8.5 |
+| Box-Muller transform (2 logs, 2 sincos, 2 square roots) | 23.6 | 7.0 |
+| Philox4x32-10 + Box-Muller | 34.0 | 15.2 |
+| xoshiro256\*\* + Ziggurat | 14.4 | does not vectorise |
+
+The generator vectorises but is no faster: AVX2 has no 32×32→64-bit multiply across all eight 32-bit lanes, so GCC reshuffles the words every round. The transform vectorises only because `log` and `sin`/`cos` are branchless polynomials in the header. With the standard library's functions the loop stays scalar, because this toolchain has no vector maths library and `-ffast-math` is banned. The polynomials match the standard library to 2.2 × 10⁻¹⁶ relative (log) and 6.9 × 10⁻¹⁶ absolute (sin, cos) over every input the draws can produce, and scalar and vectorised builds give the same bits. The Ziggurat rejects, so its loop cannot vectorise, and neither does the per-delivery kernel.
+
+### Batch latency
+
+Wall time of one `simulate_batch` call, timed call by call after warm-up calls (`make latency`). Percentiles are nearest-rank; with 500 samples, p99.9 is the slowest call. Each cell is the median of three runs.
+
+| Deliveries | Threads | Samples | p50 | p99 | p99.9 |
+|---|---|---|---|---|---|
+| 10,000 | 1 | 3,000 | 3.29 ms | 4.01 ms | 5.23 ms |
+| 100,000 | 1 | 500 | 33.3 ms | 35.7 ms | 37.1 ms |
+| 10,000 | 16 | 3,000 | 0.47 ms | 0.90 ms | 1.69 ms |
+| 100,000 | 16 | 500 | 3.23 ms | 5.13 ms | 11.4 ms |
+
+Every p50 agreed within 1% across the three runs, and every p99 within 4% except 16 threads at 10,000 deliveries, which ranged from 0.81 to 1.02 ms. The p99.9 column moved more: 5.05 to 5.47 ms and 36.2 to 43.8 ms on one thread, and 1.19 to 1.88 ms and 10.4 to 14.0 ms on 16.
+
+### False sharing
+
+| Counting path | Threads | ns per delivery |
+|---|---|---|
+| Per-thread `Summary`, packed (56-byte slots) | 1 | 1.223 |
+| Per-thread `PaddedSummary` (64-byte slots) | 1 | 1.226 |
+| Per-thread `Summary`, packed (56-byte slots) | 16 | 0.416 |
+| Per-thread `PaddedSummary` (64-byte slots) | 16 | 0.251 |
+| The engine's `summarize` (serial) | 1 | 1.309 |
+
+Counting outcomes into per-thread `Summary` slots packed back to back, so that neighbouring threads share cache lines, is about 1.7 times as slow on 16 threads as one 64-byte `PaddedSummary` per thread (0.37 to 0.43 against 0.20 to 0.25 ns per delivery over three runs). On one thread the two layouts cost the same. The engine itself keeps no per-thread counters. The cache-line audit in the header finds that the only shared writes in `simulate_batch` are the outcome arrays, each thread writing one contiguous run of indices. Because work is handed out 64 deliveries at a time, those runs start on cache-line boundaries of the aligned buffers.
+
+### The Python binding
+
+`fourth_stump.Batch` owns one aligned `BatchStorage` (ADR-015). `Batch.sample` fills its releases. `Batch.simulate` runs the engine into its outcomes and returns them as read-only NumPy views of that storage, which is reused on every call. Every engine call in the binding runs with the GIL released.
+
+- **Lifetime rule.** Each view's base is the `Batch`, so the storage lives until the `Batch` and every view of it are gone.
+- **Aliasing rule.** A view shows the storage, not a snapshot: the next `simulate` or `sample` rewrites it, so copy a result to keep it.
+- **The older call.** `simulate` keeps its signature and returns new, writeable arrays. It never copied either: it always wrote straight into the arrays it allocated. What `Batch` saves is allocating nine arrays per call and the page faults of writing them for the first time.
+
+| Deliveries | `simulate` (µs per call) | `Batch.simulate` (µs per call) | Saved per call (µs), three runs | Saved per delivery (ns), median |
+|---|---|---|---|---|
+| 1,000 | 152 | 146 | 5.7 to 9.1 | 6.1 |
+| 10,000 | 849 | 798 | 30 to 82 | 5.1 |
+| 100,000 | 5,007 | 4,288 | 625 to 1,542 | 7.2 |
+| 1,000,000 | 42,042 | 37,598 | 3,898 to 4,512 | 4.4 |
+
+Every core, median of 31 calls with the two calls alternating, and each cell the median of three runs (`make bench-ipc`). Per-call times at 10,000 and 100,000 deliveries moved by up to 36% between runs (`simulate` took 798 to 1,018 µs and 4,335 to 5,885 µs). The saving was positive in every row of every run.
 
 ## The model
 
@@ -183,7 +264,9 @@ Requires g++ with C++20 and OpenMP, [uv](https://docs.astral.sh/uv/), and `make`
 ```
 uv sync            # Python environment
 make test          # C++ tests, then the Python tests against the freshly built binding
-make bench         # throughput and the RK4 comparison
+make bench         # throughput, the two random-number policies, and the RK4 comparison
+make latency       # batch latency percentiles and the false-sharing table
+make bench-ipc     # Batch.simulate's views against simulate's new arrays
 make error-bound   # the error-bound table
 make viz-data      # regenerate viz/data/trajectories.json
 uv run python -m scraper                 # download and parse Cricsheet (cached)
@@ -191,18 +274,19 @@ uv run python -m calibrator.run_expectancy
 uv run python -m calibrator.calibrate    # about 20 minutes
 ```
 
-Tests: 25 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 11 for the page's logic. All run offline.
+Tests: 36 C++ test cases (Catch2), 62 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 23 for the page's logic. All run offline.
 
 | Path | Contents |
 |---|---|
 | `cpp/include/fourth_stump_engine.hpp` | The whole engine |
 | `cpp/include/fourth_stump_reference.hpp` | The RK4 reference trajectory |
 | `cpp/include/fourth_stump_envelope.hpp` | The envelope and the sweep that measures the bound |
-| `cpp/tests`, `cpp/bench` | Tests, benchmark, error-bound tool |
-| `fourth_stump/` | Python binding and venue conditions |
+| `cpp/tests`, `cpp/bench` | Tests; throughput and latency benchmarks, error-bound tool, the Windows power-throttling opt-out |
+| `cpp/python` | The pybind11 binding's source |
+| `fourth_stump/` | Python package: the binding, venue conditions, the binding's benchmark |
 | `scraper/`, `calibrator/` | Cricsheet pipeline, run expectancy, calibration |
 | `viz/` | The page |
-| `ADR/`, `GLOSSARY.md` | Thirteen design decisions and the project's vocabulary |
+| `ADR/`, `GLOSSARY.md` | Fifteen design decisions and the project's vocabulary |
 
 ## Constants and sources
 

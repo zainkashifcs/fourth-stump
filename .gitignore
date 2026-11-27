@@ -1,0 +1,11 @@
+build/
+.venv/
+__pycache__/
+*.pyd
+*.so
+*.o
+*.exe
+.pytest_cache/
+.hypothesis/
+data/cache/
+node_modules/

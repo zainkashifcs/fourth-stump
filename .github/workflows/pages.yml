@@ -1,0 +1,60 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# One deployment at a time; a newer push replaces a queued one but never cancels a running one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v6
+      # The page is served at /fourth-stump/viz/; the site root only redirects there.
+      # Model and audio generators, page tests and README screenshots are not loaded by the page.
+      - name: Assemble the site
+        run: |
+          mkdir _site
+          cp -r viz _site/viz
+          rm -rf _site/viz/blender _site/viz/tests _site/viz/screenshots _site/viz/package.json
+          find _site -name '*.py' -delete
+          cat > _site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en-GB">
+          <head>
+            <meta charset="utf-8">
+            <title>Fourth stump</title>
+            <meta http-equiv="refresh" content="0; url=viz/">
+          </head>
+          <body>
+            <p><a href="viz/">Open the page</a></p>
+          </body>
+          </html>
+          EOF
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}viz/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

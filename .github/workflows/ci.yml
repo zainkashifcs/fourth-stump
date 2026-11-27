@@ -21,7 +21,13 @@ jobs:
         run: make error-bound
       - name: Python tests
         run: make pytest
-      - name: Visualisation logic tests
-        run: node --test viz/tests/logic.test.mjs
+      # Node 24: the runner's preinstalled Node may be older than the tests need.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # The page's logic, and the committed WebAssembly build against the native
+      # engine's published probabilities (ADR-016). No WebAssembly rebuild here.
+      - name: Page tests
+        run: node --test viz/tests/
       - name: Benchmark (informational; runner hardware varies)
         run: make bench

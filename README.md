@@ -1,10 +1,14 @@
 # Fourth Stump EV
 
+[![ci](https://github.com/zainkashifcs/fourth-stump/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zainkashifcs/fourth-stump/actions/workflows/ci.yml?query=branch%3Amain)
+
 A deterministic, zero-allocation C++20 Monte Carlo engine that simulates 30 million cricket deliveries per second on a laptop in everyday use, with a closed-form trajectory kernel checked against an RK4 reference to a measured error bound of 8 mm.
 
 It answers one question. A fast bowler lands the ball just outside off stump, in the "fourth-stump corridor". Should the batter leave it or play it? The answer depends on the ground: the same release swings at Lord's, bounces over the stumps at the WACA in Perth and seams at Newlands.
 
-![The same release at Lord's, the WACA and Newlands](viz/screenshots/comparison.png)
+[![The same release at Lord's, the WACA and Newlands](viz/screenshots/comparison.png)](https://zainkashifcs.github.io/fourth-stump/viz/)
+
+Live demo: <https://zainkashifcs.github.io/fourth-stump/viz/>
 
 ## Headline numbers
 
@@ -31,18 +35,18 @@ Each delivery in the throughput figure is the full pipeline: three normal draws,
 For each action the engine estimates
 
 ```
-EV(action) = E[runs | action] − λ(w, a) · P(dismissal | action)
+EV(action) = E[runs | action] âˆ’ Î»(w, a) Â· P(dismissal | action)
 ```
 
-where `λ(w, a)` is the wicket cost in runs with `w` wickets lost and a ball `a` overs old. Leave and play are evaluated on the same simulated delivery with the same random draws (common random numbers).
+where `Î»(w, a)` is the wicket cost in runs with `w` wickets lost and a ball `a` overs old. Leave and play are evaluated on the same simulated delivery with the same random draws (common random numbers).
 
 ## The kernel
 
 Quadratic drag has no exact closed-form solution in three dimensions, so the kernel uses the flat-trajectory approximation: a delivery is nearly straight, so distance down the pitch replaces time as the independent variable.
 
-In the frame moving with the wind, write `u` for forward air speed, `d` for distance travelled, `θx = ux/u` and `θz = uz/u` for the path's slopes, `k = ρ A C_d / 2m` for drag and `k_s = ρ A C_s / 2m` for the seam side force.
+In the frame moving with the wind, write `u` for forward air speed, `d` for distance travelled, `Î¸x = ux/u` and `Î¸z = uz/u` for the path's slopes, `k = Ï A C_d / 2m` for drag and `k_s = Ï A C_s / 2m` for the seam side force.
 
-**Speed decays exponentially with distance.** Drag gives `du/dt = −k u²`, and `dd = u dt`, so
+**Speed decays exponentially with distance.** Drag gives `du/dt = âˆ’k uÂ²`, and `dd = u dt`, so
 
 $$\frac{du}{dd} = -k\,u \quad\Rightarrow\quad u(d) = u_0\,e^{-kd}, \qquad t(d) = \frac{e^{kd}-1}{k\,u_0}$$
 
@@ -50,13 +54,13 @@ $$\frac{du}{dd} = -k\,u \quad\Rightarrow\quad u(d) = u_0\,e^{-kd}, \qquad t(d) =
 
 $$\frac{d\theta_x}{dd} = \frac{a_x u - u_x a_s}{u^3} = k_s$$
 
-The drag terms cancel exactly, and the side force `k_s u²` divided by `u²` leaves a constant. Drag and the side force both scale with `v²`, so however much the ball slows, it turns by the same angle per metre:
+The drag terms cancel exactly, and the side force `k_s uÂ²` divided by `uÂ²` leaves a constant. Drag and the side force both scale with `vÂ²`, so however much the ball slows, it turns by the same angle per metre:
 
 $$x(d) = x_0 + \theta_{x0}\,d + \tfrac{1}{2}k_s\,d^2$$
 
 This is why a ball swings "late": the sideways movement grows with the square of distance. It is also why swing at a given distance does not depend on pace, which a test checks on the RK4 reference at 120 and 150 km/h.
 
-**Gravity has a closed form with one `exp`.** `dθz/dd = −g/u² = −g e^{2kd}/u₀²`, so
+**Gravity has a closed form with one `exp`.** `dÎ¸z/dd = âˆ’g/uÂ² = âˆ’g e^{2kd}/uâ‚€Â²`, so
 
 $$z(d) = z_0 + \theta_{z0}\,d - \frac{g\,(e^{2kd} - 1 - 2kd)}{4k^2u_0^2}$$
 
@@ -150,7 +154,7 @@ What vectorises, from `-fopt-info-vec` and from scalar and vectorised builds of 
 | Philox4x32-10 + Box-Muller | 34.0 | 15.2 |
 | xoshiro256\*\* + Ziggurat | 14.4 | does not vectorise |
 
-The generator vectorises but is no faster: AVX2 has no 32×32→64-bit multiply across all eight 32-bit lanes, so GCC reshuffles the words every round. The transform vectorises only because `log` and `sin`/`cos` are branchless polynomials in the header. With the standard library's functions the loop stays scalar, because this toolchain has no vector maths library and `-ffast-math` is banned. The polynomials match the standard library to 2.2 × 10⁻¹⁶ relative (log) and 6.9 × 10⁻¹⁶ absolute (sin, cos) over every input the draws can produce, and scalar and vectorised builds give the same bits. The Ziggurat rejects, so its loop cannot vectorise, and neither does the per-delivery kernel.
+The generator vectorises but is no faster: AVX2 has no 32Ã—32â†’64-bit multiply across all eight 32-bit lanes, so GCC reshuffles the words every round. The transform vectorises only because `log` and `sin`/`cos` are branchless polynomials in the header. With the standard library's functions the loop stays scalar, because this toolchain has no vector maths library and `-ffast-math` is banned. The polynomials match the standard library to 2.2 Ã— 10â»Â¹â¶ relative (log) and 6.9 Ã— 10â»Â¹â¶ absolute (sin, cos) over every input the draws can produce, and scalar and vectorised builds give the same bits. The Ziggurat rejects, so its loop cannot vectorise, and neither does the per-delivery kernel.
 
 ### Batch latency
 
@@ -185,19 +189,19 @@ Counting outcomes into per-thread `Summary` slots packed back to back, so that n
 - **Aliasing rule.** A view shows the storage, not a snapshot: the next `simulate` or `sample` rewrites it, so copy a result to keep it.
 - **The older call.** `simulate` keeps its signature and returns new, writeable arrays. It never copied either: it always wrote straight into the arrays it allocated. What `Batch` saves is allocating nine arrays per call and the page faults of writing them for the first time.
 
-| Deliveries | `simulate` (µs per call) | `Batch.simulate` (µs per call) | Saved per call (µs), three runs | Saved per delivery (ns), median |
+| Deliveries | `simulate` (Âµs per call) | `Batch.simulate` (Âµs per call) | Saved per call (Âµs), three runs | Saved per delivery (ns), median |
 |---|---|---|---|---|
 | 1,000 | 152 | 146 | 5.7 to 9.1 | 6.1 |
 | 10,000 | 849 | 798 | 30 to 82 | 5.1 |
 | 100,000 | 5,007 | 4,288 | 625 to 1,542 | 7.2 |
 | 1,000,000 | 42,042 | 37,598 | 3,898 to 4,512 | 4.4 |
 
-Every core, median of 31 calls with the two calls alternating, and each cell the median of three runs (`make bench-ipc`). Per-call times at 10,000 and 100,000 deliveries moved by up to 36% between runs (`simulate` took 798 to 1,018 µs and 4,335 to 5,885 µs). The saving was positive in every row of every run.
+Every core, median of 31 calls with the two calls alternating, and each cell the median of three runs (`make bench-ipc`). Per-call times at 10,000 and 100,000 deliveries moved by up to 36% between runs (`simulate` took 798 to 1,018 Âµs and 4,335 to 5,885 Âµs). The saving was positive in every row of every run.
 
 ## The model
 
-- **Forces.** Gravity, quadratic drag, and a seam side force `½ ρ A C_s v²` perpendicular to the ball's air-relative velocity. There is no Magnus term: seam-bowling swing comes from the seam tripping the airflow on one side of the ball, not from spin.
-- **Bounce.** The ball reflects about the pitch's surface normal, keeps a fraction `e_z` of its speed into the pitch and 0.887 of its speed along it, then turns sideways by a random seam deviation. `e_z` varies a little from one delivery to the next (variable bounce), so a delivery that usually clears the bails sometimes keeps low. At Lord's the normal is tilted by the slope: a 2.5 m fall across the ground, about 1.1°, which moves the ball three to six centimetres sideways by the stumps, depending on length (4.3 cm at a good length).
+- **Forces.** Gravity, quadratic drag, and a seam side force `Â½ Ï A C_s vÂ²` perpendicular to the ball's air-relative velocity. There is no Magnus term: seam-bowling swing comes from the seam tripping the airflow on one side of the ball, not from spin.
+- **Bounce.** The ball reflects about the pitch's surface normal, keeps a fraction `e_z` of its speed into the pitch and 0.887 of its speed along it, then turns sideways by a random seam deviation. `e_z` varies a little from one delivery to the next (variable bounce), so a delivery that usually clears the bails sometimes keeps low. At Lord's the normal is tilted by the slope: a 2.5 m fall across the ground, about 1.1Â°, which moves the ball three to six centimetres sideways by the stumps, depending on length (4.3 cm at a good length).
 - **The batter.** The batter tracks the true path until 0.2 s before the ball arrives, then commits the bat to where a delivery with mean swing and no seam deviation would arrive. Only movement after that commit point can beat the bat.
 - **Outcomes.** If played: a small gap is middled and scores; a gap near the bat's edge is an edge, which is a dismissal if it is an outside edge that carries to the slip cordon and is caught; a large gap is a play-and-miss, which is a dismissal if the ball goes on to hit the stumps. If left: a dismissal only if it hits the stumps.
 
@@ -207,15 +211,15 @@ Out of scope by decision: spin bowling, LBW, catches off middled deliveries, run
 
 Ball-by-ball data for 905 men's Tests (1.74 million deliveries, 2001 to 2026) comes from [Cricsheet](https://cricsheet.org/), made available under the [Open Data Commons Attribution License (ODC-By 1.0)](http://opendatacommons.org/licenses/by/1.0/). The files under `data/` are derived from it. Cricsheet has no line, length, batter action or bowler type, so nothing here depends on observing them; overs 1 to 25 of each innings stand in for pace bowling.
 
-**Wicket cost.** `V(w, a)` is the expected runs for the rest of the innings with `w` wickets lost and a ball `a` overs old. Ball age cycles every 80 overs, so `V` is the fixed point of a cyclic recursion, solved exactly as a linear system. `V(0, 1)` is 315 runs. The wicket cost `λ = V(w, a) − V(w+1, a)` runs from about 44 runs with no wickets lost to about 14 with nine. "Overs remaining" was rejected as a state: with nothing after the close of play, a wicket near stumps would cost nothing, which is the opposite of Test cricket.
+**Wicket cost.** `V(w, a)` is the expected runs for the rest of the innings with `w` wickets lost and a ball `a` overs old. Ball age cycles every 80 overs, so `V` is the fixed point of a cyclic recursion, solved exactly as a linear system. `V(0, 1)` is 315 runs. The wicket cost `Î» = V(w, a) âˆ’ V(w+1, a)` runs from about 44 runs with no wickets lost to about 14 with nine. "Overs remaining" was rejected as a state: with nothing after the close of play, a wicket near stumps would cost nothing, which is the opposite of Test cricket.
 
 **Calibration.** Historical dismissal rates are seen only on deliveries a batter chose to play. The calibrator simulates a batter who follows a leave rule and matches two rates per venue on that population: the bowled rate identifies the spread of seam deviation, and the caught rate identifies catch conversion (the share of carrying edges that are caught).
 
 | Venue | New-ball deliveries | Seam deviation spread | Catch conversion | Mean restitution `e_z` (assumed) |
 |---|---|---|---|---|
-| Lord's | 23,715 | 0.42° (0.40° to 0.44°) | 0.73 (0.61 to 0.86) | 0.52 |
-| The WACA, Perth (13 Tests at the WACA, 6 at Perth Stadium) | 10,949 | 0.50° (0.45° to 0.54°) | 0.18 (0.14 to 0.24) | 0.62 |
-| Newlands | 14,785 | 0.41° (0.38° to 0.44°) | 0.47 (0.39 to 0.59) | 0.56 |
+| Lord's | 23,715 | 0.42Â° (0.40Â° to 0.44Â°) | 0.73 (0.61 to 0.86) | 0.52 |
+| The WACA, Perth (13 Tests at the WACA, 6 at Perth Stadium) | 10,949 | 0.50Â° (0.45Â° to 0.54Â°) | 0.18 (0.14 to 0.24) | 0.62 |
+| Newlands | 14,785 | 0.41Â° (0.38Â° to 0.44Â°) | 0.47 (0.39 to 0.59) | 0.56 |
 
 Intervals are 95% bootstrap intervals for sampling noise in the counts only.
 
@@ -234,14 +238,38 @@ A static Three.js page styled as a retro Test-match broadcast, reading trajector
 
 The batter stands outside leg stump so a corridor delivery never passes through him: his head, body and pads stay at least 15 cm to the leg side of middle stump, he moves across to meet the ball when he plays, and when he leaves one that would hit him on the leg side he steps further to leg.
 
+Every view bowls the showcase release: 0.75 m to the off side of middle stump and 2.08 m high, right-arm over the wicket (a left-armer is its mirror image). The bowler is stood so that his hand is on that point at the instant of release, with his front foot planted behind the popping crease and his body further to the off side than his hand.
+
 ```
 cd viz && python -m http.server 8000     # then open http://localhost:8000/
 ```
 
 - **Compare venues.** The same release at the three grounds, with a ball-age slider, a bowler-arm toggle and a bowling-end toggle. "Bowl again" bowls one sampled delivery per ground and plays its outcome: middled, edged, bowled, left alone or play-and-miss. From the Pavilion End at Lord's the slope takes the ball into a right-hander; from the Nursery End, away.
 - **Test your eye.** The bowler runs in through three camera cuts (behind his mark, side-on at the crease, then the batter's view), and the picture freezes at the bounce. Choose leave or play, then see the true path, the outcome and the expected value of both actions.
+- **Live engine.** The engine itself, running in the browser (below). The venue, the bowler's arm, the delivery length, the release speed, the swing coefficient, the crosswind and the wickets lost are the visitor's; every change simulates 50,000 deliveries. "Leave one" and "Play one" bowl the next delivery of that batch with the batter taking that action, so a yorker can be left and bowled, or a bouncer swayed out of; the table marks the better action. Without WebAssembly the view shows the nearest precomputed scenario instead.
 - **Cameras.** Behind the stumps, side on, or from above (a high camera in the stand behind the batter that takes in the whole pitch, the cover fielder and the far stands). With the run-up on, the director's third cut lands on the chosen camera; behind the stumps it closes in on the bat or the stumps when the ball gets there, and holds the wide frame for a ball left alone or missed so its path runs on to the keeper.
-- **Around it.** A teletext boot screen that tracks the real loading (skip it with any key, or `?noboot=1`), sound synthesised with the Web Audio API (no audio files): ball, bat and stumps, a crowd murmur between balls and a crowd reaction to each outcome. A commentator's line for each outcome appears as a caption and, with sound on, is spoken once by the browser's speech synthesis. There is also a "How it works" panel.
+- **Around it.** A teletext boot screen that tracks the real loading (skip it with any key, or `?noboot=1`); ball, bat, stumps and crowd synthesised with the Web Audio API, with a murmur between balls and a reaction to each outcome; and a "How it works" panel.
+- **Commentary.** Each outcome has a line in two beats, a short call, a breath, then the description, shown as a ticker above the strap. With sound on it is played from clips synthesised once, offline, with an open speech model (Kokoro-82M; the details are in `viz/vendor/README.md`). If a clip cannot be had, the browser's speech synthesis says the same words.
+
+The page is published to GitHub Pages at <https://zainkashifcs.github.io/fourth-stump/viz/> by `.github/workflows/pages.yml` on every push to `main`, without the model scripts, the tests and the screenshots.
+
+### The live engine
+
+The same engine header is compiled by Emscripten to 27 kB of WebAssembly (`make wasm`; the build is committed) and run in a pool of Web Workers, one module instance each, with no shared memory (ADR-016). A batch is split into pieces of consecutive delivery indices and each worker returns integer outcome counts, so the result is identical for any number of workers. It agrees with the native engine statistically, as ADR-003 promises across platforms, and with the same seed it gives identical outcome counts.
+
+| Workers | Lord's (ms) | Newlands, wind (4, 1) m/s (ms) |
+|---|---|---|
+| In the page | 18.0 | 28.1 |
+| 2 | 9.3 to 9.6 | 14.5 to 14.8 |
+| 4 | 4.8 to 5.3 | 7.4 to 8.2 |
+| 8 | 3.1 to 3.3 | 4.6 to 5.0 |
+| 16 | 2.3 to 2.6 | 3.0 to 3.4 |
+
+50,000 deliveries in a visible Chromium window on the machine above, median of 21 runs, ranges over two sessions, timed on a page that does nothing else. A single thread costs about the same per delivery as the native engine on one thread. In the demo itself the workers share the processor with the 3D scene: its status line showed 4 to 10 ms on 16 workers on a quiet machine, and far more when other programs were busy or the window was in the background.
+
+The length is one of three presets (ADR-016): good length bounces 6.5 m from the batter's stumps, the yorker is a full toss that reaches the base of the stumps, and the bouncer bounces 8.65 m out. Their limits are the outcome model's. A played ball is scored by its sideways gap from where the batter expected it, so its height is ignored: yorkers and bouncers are middled 98 to 100% of the time when played. The "bouncer" reaches the stumps at about 1 m, so leaving it almost never costs a wicket, and its danger to the batter is not represented.
+
+![Live engine, a bouncer left alone](viz/screenshots/live.png)
 
 ![Side on, with the stands, the boards and the cover fielder](viz/screenshots/sideon.png)
 
@@ -268,13 +296,14 @@ make bench         # throughput, the two random-number policies, and the RK4 com
 make latency       # batch latency percentiles and the false-sharing table
 make bench-ipc     # Batch.simulate's views against simulate's new arrays
 make error-bound   # the error-bound table
-make viz-data      # regenerate viz/data/trajectories.json
+make viz-data      # regenerate viz/data/trajectories.json and viz/data/live.json
+make wasm          # rebuild viz/wasm/ (needs Emscripten; the output is committed)
 uv run python -m scraper                 # download and parse Cricsheet (cached)
 uv run python -m calibrator.run_expectancy
 uv run python -m calibrator.calibrate    # about 20 minutes
 ```
 
-Tests: 36 C++ test cases (Catch2), 62 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 23 for the page's logic. All run offline.
+Tests: 40 C++ test cases (Catch2), 63 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 52 for the page (`node --test viz/tests/`: its logic, and the committed WebAssembly build against the native engine's published probabilities). All run offline.
 
 | Path | Contents |
 |---|---|
@@ -283,22 +312,27 @@ Tests: 36 C++ test cases (Catch2), 62 Python tests (pytest and hypothesis, inclu
 | `cpp/include/fourth_stump_envelope.hpp` | The envelope and the sweep that measures the bound |
 | `cpp/tests`, `cpp/bench` | Tests; throughput and latency benchmarks, error-bound tool, the Windows power-throttling opt-out |
 | `cpp/python` | The pybind11 binding's source |
-| `fourth_stump/` | Python package: the binding, venue conditions, the binding's benchmark |
+| `cpp/wasm` | The C interface compiled to WebAssembly for the page |
+| `fourth_stump/` | Python package: the binding, venue conditions, the binding's benchmark, the page's data export |
 | `scraper/`, `calibrator/` | Cricsheet pipeline, run expectancy, calibration |
 | `viz/` | The page |
-| `ADR/`, `GLOSSARY.md` | Fifteen design decisions and the project's vocabulary |
+| `viz/wasm`, `viz/js/engine-wasm.js`, `viz/js/engine-worker.js` | The built engine and the worker pool that runs it |
+| `viz/blender`, `viz/assets` | The model scripts and the models they export |
+| `viz/audio` | The commentary clips and the script that made them |
+| `.github/workflows` | CI, and the GitHub Pages deployment |
+| `ADR/`, `GLOSSARY.md` | Sixteen design decisions and the project's vocabulary |
 
 ## Constants and sources
 
 | Constant | Value | Source |
 |---|---|---|
-| Pace retention at the bounce | 0.887 | James, Carré and Haake (2004), "The playing performance of county cricket pitches", Sports Engineering 7(1), 1–14, [doi:10.1007/BF02843969](https://doi.org/10.1007/BF02843969): 87.1% to 90.2% of impact speed retained |
+| Pace retention at the bounce | 0.887 | James, CarrÃ© and Haake (2004), "The playing performance of county cricket pitches", Sports Engineering 7(1), 1â€“14, [doi:10.1007/BF02843969](https://doi.org/10.1007/BF02843969): 87.1% to 90.2% of impact speed retained |
 | Restitution range | 0.46 to 0.65 | The same paper: rebound angle 52% to 73% of impact angle, times pace retention |
-| Batter reaction time | 0.2 s | McLeod (1987), "Visual reaction time and high-speed ball games", Perception 16(1), 49–59, [doi:10.1068/p160049](https://doi.org/10.1068/p160049) |
-| Lord's slope | 2.5 m fall, 1.09° | [Lord's slope](https://en.wikipedia.org/wiki/Lord%27s_slope); ground width 143 yd from the MCC drawing reported at [cricketboundary.com](https://cricketboundary.com/grounds/lords/) |
+| Batter reaction time | 0.2 s | McLeod (1987), "Visual reaction time and high-speed ball games", Perception 16(1), 49â€“59, [doi:10.1068/p160049](https://doi.org/10.1068/p160049) |
+| Lord's slope | 2.5 m fall, 1.09Â° | [Lord's slope](https://en.wikipedia.org/wiki/Lord%27s_slope); ground width 143 yd from the MCC drawing reported at [cricketboundary.com](https://cricketboundary.com/grounds/lords/) |
 | Bat width | 108 mm | Laws of Cricket, Law 5 |
 
-The paper figures were read from abstract and index pages, not the full texts. The slope angle assumes the fall runs straight across the pitch; it runs diagonally, so 1.09° is an upper estimate.
+The paper figures were read from abstract and index pages, not the full texts. The slope angle assumes the fall runs straight across the pitch; it runs diagonally, so 1.09Â° is an upper estimate.
 
 ## Assumptions that are not fitted
 
@@ -312,4 +346,4 @@ The paper figures were read from abstract and index pages, not the full texts. T
 
 ## Third-party code
 
-[Catch2](https://github.com/catchorg/Catch2) 3.7.1 (BSL-1.0), [pybind11](https://github.com/pybind/pybind11) (BSD), [Three.js](https://threejs.org/) 0.170.0 (MIT) and the VT323 typeface (OFL), each vendored or installed with its licence. The 3D models are this project's own, built with [Blender](https://www.blender.org/).
+[Catch2](https://github.com/catchorg/Catch2) 3.7.1 (BSL-1.0), [pybind11](https://github.com/pybind/pybind11) (BSD), [Three.js](https://threejs.org/) 0.170.0 (MIT) and the VT323 typeface (OFL), each vendored or installed with its licence. The 3D models are this project's own, built with [Blender](https://www.blender.org/). The WebAssembly build is made with [Emscripten](https://emscripten.org/), which is not shipped. The commentary clips were synthesised with the Kokoro-82M speech model (Apache-2.0) and its stock `bm_george` voice; `viz/vendor/README.md` lists the model, the tools used and their licences.

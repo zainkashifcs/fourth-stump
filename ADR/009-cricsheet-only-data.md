@@ -10,3 +10,14 @@ The original brief called for scraping ball-by-ball Test commentary for line, le
 - Cordon catches are not labelled. Where the fielder of a `caught` dismissal can be identified as the wicketkeeper, that sharpens the cordon rate; otherwise all catches are an upper bound and the README says so.
 - The downloader caches the archive on disk, and a small pre-aggregated calibration dataset is committed so everything runs offline.
 - Commentary parsing is cut. It returns only if commentary text is obtained legitimately.
+
+## Licence
+
+Checked at the source on 2026-11-27.
+
+- Cricsheet's [licensing page](https://cricsheet.org/licensing/) says: "Most of the data is covered by the Open Data Commons Attribution License, whereas the XML match data alone is available under the Creative Commons Attribution 4.0 International License." We use the JSON match data, so the licence is the Open Data Commons Attribution License, ODC-By 1.0 ([full text](http://opendatacommons.org/licenses/by/1.0/)).
+- The archive we download, `tests_json.zip`, carries the same licence as `LICENSE.txt`. Cricsheet announced this on 7 October 2026 in "[A License for match data, and the addition of the Venue Register](https://cricsheet.org/article/licensing-and-venues-registry/)"; before that the JSON match data had no stated licence.
+- Cricsheet's summary of what ODC-By asks: attribute any public use of the database or of works produced from it, make the licence clear to others, and keep any notices on the original intact. Sharing, adapting and producing works from the data are allowed.
+- What that means here: the files we commit that are derived from the data (`data/calibration_moments.json`, `data/calibrated.json`, `data/run_expectancy.json`) need a visible credit to Cricsheet with the licence named, which belongs in the README. The archive and the per-ball table stay in the git-ignored `data/cache/` and are not redistributed.
+- `https://cricsheet.org/robots.txt` allows `/downloads/` (it disallows only `/data/`). The downloader makes one request and never repeats it while the cached file exists.
+- Read: the licensing page, the announcement, and the start of `LICENSE.txt` in the archive. The full licence text was not read end to end, and this is not legal advice.

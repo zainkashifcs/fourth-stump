@@ -1,0 +1,74 @@
+{
+  "source": "Cricsheet men's Tests, https://cricsheet.org/downloads/tests_json.zip (ODC-By 1.0, see ADR-009)",
+  "new_ball_window_overs": [
+    1,
+    25
+  ],
+  "definitions": {
+    "balls": "legal deliveries in the window; wides and no-balls are dropped, with anything that happened on them",
+    "bowled": "wicket_kind == 'bowled'",
+    "caught": "wicket_kind == 'caught', every catch by a fielder (caught and bowled is a separate kind, not counted)",
+    "caught_keeper": "the 'caught' dismissals whose fielder is the innings' wicketkeeper by the proxy in cordon_proxy",
+    "other_dismissals": "lbw, run out, stumped, caught and bowled, hit wicket and the rest: outside the model (ADR-007), so not wickets here, though their balls count",
+    "runs_batter": "runs off the bat on legal deliveries"
+  },
+  "cordon_proxy": {
+    "method": "Cricsheet does not label fielding positions. A wicketkeeper is recognised only through stumpings: a 'known keeper' is any fielder credited with a stumping anywhere in the men's Test archive. In each innings at most one known keeper is taken to be keeping: of those with a catch or stumping in that innings, the one with most stumpings in the match, then most dismissals in the match, then most stumpings in the archive. A 'caught' dismissal by that fielder is a keeper catch.",
+    "quality": "Keeper catches are a lower bound on cordon catches, because slips and gully cannot be identified at all; all catches are the upper bound. Measured, in archive_counts: where two known keepers caught in the same innings only one can have been keeping, so the rule keeps one and rejects the rest (rejected_as_second_keeper_in_innings); which of the two it keeps is a judgement by the ranking above, not an observation. Not measurable from this data: a known keeper fielding elsewhere is counted wrongly when no other known keeper caught in that innings, and a keeper with no stumping in the archive is missed. The split was not checked against an external source.",
+    "archive_counts": {
+      "known_keepers": 69,
+      "catches": 17244,
+      "catches_by_a_known_keeper": 6095,
+      "keeper_catches": 5595,
+      "rejected_as_second_keeper_in_innings": 500,
+      "keeper_share_of_catches": 0.3245
+    }
+  },
+  "venues": {
+    "lords": {
+      "matches": 42,
+      "first_date": "2005-07-21",
+      "last_date": "2026-08-27",
+      "balls": 23715,
+      "bowled": 92,
+      "caught": 235,
+      "caught_keeper": 93,
+      "other_dismissals": 107,
+      "runs_batter": 11446,
+      "bowled_per_ball": 0.003879401222854733,
+      "caught_per_ball": 0.00990934008011807,
+      "caught_keeper_per_ball": 0.00392156862745098,
+      "runs_per_ball": 0.4826481130086443
+    },
+    "newlands": {
+      "matches": 27,
+      "first_date": "2003-01-02",
+      "last_date": "2026-10-27",
+      "balls": 14785,
+      "bowled": 33,
+      "caught": 168,
+      "caught_keeper": 59,
+      "other_dismissals": 55,
+      "runs_batter": 7393,
+      "bowled_per_ball": 0.0022319918836658775,
+      "caught_per_ball": 0.011362867771389923,
+      "caught_keeper_per_ball": 0.0039905309435238415,
+      "runs_per_ball": 0.5000338180588434
+    },
+    "perth": {
+      "matches": 19,
+      "first_date": "2003-10-09",
+      "last_date": "2025-11-21",
+      "balls": 10949,
+      "bowled": 30,
+      "caught": 103,
+      "caught_keeper": 45,
+      "other_dismissals": 36,
+      "runs_batter": 5651,
+      "bowled_per_ball": 0.002739976253539136,
+      "caught_per_ball": 0.0094072518038177,
+      "caught_keeper_per_ball": 0.004109964380308704,
+      "runs_per_ball": 0.5161201936249886
+    }
+  }
+}

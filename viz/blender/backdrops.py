@@ -5,6 +5,7 @@ Stylised silhouettes in repeating pixel textures, not scale models.
 Authored in the page's data axes, which are Blender's own: +x across (the off
 side of a right-hander), +y away from the batter, +z up. The origin is the
 middle of the building line at ground level; the page puts it behind the bowler.
+Everything near the ground stays within x = +-23, the sector stadium.py leaves open.
 """
 from math import pi
 
@@ -59,7 +60,7 @@ def build_perth():
     """The WACA's white heritage scoreboard with its dark manual board, between grass banks."""
     shape = Shape()
     white, board = tiled("boards", 0xF7F5EC), tiled("plain", 0x16261F)
-    block(shape, (90, 4, 14), (0, 4, 0), tiled("crowd", 0x4F9A4A, density=2))  # the hill, with its crowd
+    block(shape, (45, 4, 14), (0, 4, 0), tiled("crowd", 0x4F9A4A, density=2))  # the hill, with its crowd, inside the stadium's open end
     block(shape, (21, 10.5, 5), (0, 0, 0), white)
     block(shape, (18.4, 7, 0.4), (0, -2.6, 2.8), board)
     for row, z in enumerate((8.4, 6.9, 5.4, 3.9)):  # name and number slots
@@ -88,8 +89,8 @@ def build_newlands():
     ridge([(30, 0), (60, 34), (95, 66), (112, 78), (128, 64), (160, 34), (215, 0)], 0x55657C, far)
     ridge([(60, 0), (95, 66), (112, 78), (116, 40), (140, 0)], 0x47566B, far - 10)
     ridge([(-230, 0), (-150, 22), (-40, 16), (60, 26), (150, 18), (230, 0)], 0x3F6B4A, far - 60, "leaves")  # wooded lower slopes
-    for i in range(13):  # the oaks
-        x = -42 + 7 * i
+    for i in range(7):  # the oaks, inside the stadium's open end
+        x = -21 + 7 * i
         y = 8 + i % 3
         shape.ico(2.8, scaled(Matrix.Translation((x, y, 4)), 1, 1, 1.2), tiled("leaves", 0x2F6B3C if i % 2 else 0x3A7A45))
         block(shape, (0.5, 2, 0.5), (x, y, 0), tiled("plain", 0x5A4030))

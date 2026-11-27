@@ -13,7 +13,7 @@ import { createAbout } from './about.js';
 const main = document.querySelector('#app');
 const tools = document.querySelector('#tools');
 const colophon = document.querySelector('#colophon');
-const FIGURES = ['batter', 'bowler', 'slip', 'stumps'];
+const FIGURES = ['batter', 'bowler', 'slip', 'fielder', 'stumps'];
 
 function showError(error) {
   main.replaceChildren(h(
@@ -28,7 +28,7 @@ function showError(error) {
 }
 
 const count = (value) => Number(value).toLocaleString('en-GB');
-const shortName = (venue) => venue.name.split(',')[0].toUpperCase();
+const upperName = (venue) => venue.name.toUpperCase();
 
 // The loading steps, each a real promise; the boot screen shows them as they settle.
 const audio = createAudio();
@@ -38,7 +38,7 @@ const costed = validated.then((data) => {
   if (!data.scenarios.every((s) => Number.isFinite(s.wicket_cost))) throw new Error('a scenario has no wicket cost');
   return data;
 });
-const modelled = validated.then((data) => loadModels(FIGURES, venueKeys(data)));
+const modelled = validated.then((data) => loadModels(FIGURES, [...venueKeys(data), 'stadium']));
 const rigged = modelled.then((models) => {
   const missing = Object.keys(models).filter((name) => !models[name]);
   if (missing.length > 0) throw new Error(`placeholders drawn for ${missing.join(', ')}`);
@@ -46,12 +46,12 @@ const rigged = modelled.then((models) => {
 
 const boot = createBoot({
   title: 'FOURTH STUMP // QUANT BROADCAST ENGINE v1.0',
-  onShow: () => audio.play('chime'), // silent until a gesture has unlocked audio, so only a replay chimes
+  onReady: () => audio.play('chime'), // silent until a gesture has unlocked audio, so only a replay chimes
   steps: [
     { promise: fetched, label: (data) => `C++20 SOA MONTE CARLO DATA ... ${data ? `${count(data.meta?.deliveries_per_estimate)} DRAWS/STATE` : ''}` },
     { promise: costed, label: (data) => `MARKOV DP TABLE (10x80) ..... ${data ? 'LOADED' : ''}` },
-    { promise: rigged, label: () => 'FABLE / BLENDER GLB RIGS .... NEAREST-FILTER LOCKED' },
-    { promise: validated, label: (data) => `VENUES: ${data ? Object.values(data.venues).map(shortName).join(' / ') : ''}` },
+    { promise: rigged, label: () => 'PS1-STYLE / BLENDER GLB RIGS ... NEAREST-FILTER LOCKED' },
+    { promise: validated, label: (data) => `VENUES: ${data ? Object.values(data.venues).map(upperName).join(' / ') : ''}` },
   ],
 });
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -93,7 +93,7 @@ async function start() {
   document.body.append(about.dialog);
   colophon.replaceChildren(
     h('p', { class: 'fine', text: `${count(meta.deliveries_per_estimate)} deliveries per estimate, ${meta.wickets_lost} wickets lost, ${Number(meta.runs_middled).toFixed(2)} runs when middled, data generated ${meta.generated}.` }),
-    h('button', { type: 'button', class: 'link', text: 'Replay boot', onclick: () => boot.show() }),
+    h('button', { type: 'button', class: 'link', text: 'Replay boot', hidden: reducedMotion, onclick: () => boot.replay() }),
   );
   setMode('compare');
   // For checking by hand: fourthStump.preview('play', 'edged_caught') in the console; sounds lists what was

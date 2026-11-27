@@ -15,7 +15,7 @@ export function createAbout(meta) {
       h('p', { text: 'A delivery in the corridor just outside off stump leaves a batter unsure whether it has to be played. The same release needs opposite answers at different grounds.' }),
       h('ul', {},
         h('li', {}, h('b', { text: "Lord's: " }), 'the 2.5 m slope across the ground moves the ball sideways at the bounce.'),
-        h('li', {}, h('b', { text: 'Perth: ' }), 'steep bounce carries many deliveries over the stumps.'),
+        h('li', {}, h('b', { text: 'The WACA, Perth: ' }), 'steep bounce carries many deliveries over the stumps. Its numbers pool 13 Tests at the WACA with 6 at Perth Stadium.'),
         h('li', {}, h('b', { text: 'Newlands: ' }), 'sharp seam deviation makes the ball harder to middle.'))),
     h('section', {},
       h('h3', { text: 'The model' }),

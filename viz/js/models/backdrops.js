@@ -19,3 +19,18 @@ export function buildBackdrops(models, pitchLength) {
     return [key, backdrop];
   }));
 }
+
+// The ground's stands, rope and advertising boards (assets/stadium.glb),
+// authored in data axes with its origin at the batter's middle stump. Each
+// venue has its own boards, `boards_<venue key>`; only the venue on screen
+// shows. Without the file nothing is drawn and the world keeps its plain boundary.
+export function buildStadium(gltf, venueKeys) {
+  if (!gltf) return { group: null, show() {} };
+  const group = gltf.scene;
+  group.position.copy(toScene(0, 0, 0));
+  const boards = venueKeys.map((key) => [key, group.getObjectByName(`boards_${key}`)]).filter(([, node]) => node);
+  return {
+    group,
+    show(venue) { boards.forEach(([key, node]) => { node.visible = key === venue; }); },
+  };
+}

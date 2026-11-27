@@ -54,6 +54,7 @@ export function createGame(data, stage) {
       if (active) stage.clearPlay(0);
       return;
     }
+    const shownBefore = phase === 'revealed'; // back from the other view: its line has been spoken
     stage.setPlay(0, {
       venue: d.venue,
       arm: d.arm,
@@ -62,7 +63,7 @@ export function createGame(data, stage) {
       pauseIndex: cutIndex(d),
       color: colorOf(d),
       runUp: !skipRunUp.get(),
-      onEvent: () => caption.show(ending),
+      onEvent: () => caption.show(ending, { quiet: shownBefore }),
       onCut: (tag) => caption.setTag(tag),
     });
     if (phase === 'revealed') {

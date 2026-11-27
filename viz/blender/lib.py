@@ -79,27 +79,44 @@ class Atlas:
     (front, back, side, cap); a primitive stretches each of its faces over the
     panel its normal picks."""
 
+    GUTTER = 0  # edge pixels repeated round each panel; the page samples unfiltered, so none are needed
+
     def __init__(self, name, size=256):
         self.name, self.size = name, size
         self.pixels = np.zeros((size, size, 3), np.float32)
         self.rects = {}
-        self.x = self.y = self.shelf = 0
+        self.pending = []  # (tile, panel, image | alias), packed on the first map()
 
     def add(self, tile, painter, width=32, height=32):
-        """`painter(panel, width, height)` returns an image, or None to reuse the front panel."""
+        """`painter(panel, width, height)` returns an image (of any size), None to
+        reuse the front panel, or a (tile, panel) key to reuse a panel already added."""
+        assert not self.rects, f"atlas {self.name} is already packed"
         for panel in PANELS:
             image = painter(panel, width, height)
-            if image is None:
-                self.rects[tile, panel] = self.rects[tile, "front"]
-                continue
-            if self.x + width > self.size:
-                self.x, self.y, self.shelf = 0, self.y + self.shelf, 0
-            assert self.y + height <= self.size, f"atlas {self.name} is full at {tile}"
-            self.pixels[self.y:self.y + height, self.x:self.x + width] = image
-            self.rects[tile, panel] = (self.x, self.y, width, height)
-            self.x, self.shelf = self.x + width, max(self.shelf, height)
+            self.pending.append((tile, panel, (tile, "front") if image is None else image))
+
+    def _pack(self):
+        """Skyline packing, tallest panels first: each goes where it sits highest up."""
+        images = [(key, image) for *key, image in self.pending if not isinstance(image, tuple)]
+        images.sort(key=lambda item: (-item[1].shape[0], -item[1].shape[1]))
+        sky = np.zeros(self.size, int)  # the lowest free row of each column
+        g = self.GUTTER
+        for (tile, panel), image in images:
+            height, width = image.shape[0] + 2 * g, image.shape[1] + 2 * g
+            tops = [sky[x:x + width].max() for x in range(self.size - width + 1)]
+            x = int(np.argmin(tops))
+            y = int(tops[x])
+            assert y + height <= self.size, f"atlas {self.name} is full at {tile} {panel}"
+            self.pixels[y:y + height, x:x + width] = np.pad(image, ((g, g), (g, g), (0, 0)), mode="edge")
+            self.rects[tile, panel] = (x + g, y + g, width - 2 * g, height - 2 * g)
+            sky[x:x + width] = y + height
+        for tile, panel, image in self.pending:
+            if isinstance(image, tuple):
+                self.rects[tile, panel] = self.rects[image]
 
     def map(self, tile, panel, u, v, _size):
+        if not self.rects:
+            self._pack()
         x, y, width, height = self.rects[tile, panel]
         inset = 0.25  # keeps unfiltered sampling off the neighbouring panel
         px = x + inset + u * (width - 2 * inset)
@@ -139,11 +156,13 @@ class Shape:
         if group is not None and group not in self.groups:
             self.groups.append(group)
 
-    def _texture(self, made, matrix, tile, extent):
+    def _texture(self, made, matrix, tile, extent, low=None):
+        """`low` is the corner of the primitive's box (centred on its origin if None)."""
         source = tile if isinstance(tile, Tiled) else self.atlas
         inverse = matrix.inverted()
         scale = matrix.to_scale()
         metres = [extent[i] * scale[i] for i in range(3)]
+        low = [-e / 2 for e in extent] if low is None else low
         for vert in made["verts"]:
             if self.group is not None:
                 vert[self.deform][self.groups.index(self.group)] = 1.0
@@ -155,7 +174,7 @@ class Shape:
                 normal += Vector(((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y)))
             axis = max(range(3), key=lambda i: abs(normal[i]))
             for loop, point in zip(face.loops, local):
-                p = [point[i] / extent[i] + 0.5 for i in range(3)]
+                p = [(point[i] - low[i]) / extent[i] for i in range(3)]
                 if axis == 2:
                     panel, u, v, size = "cap", p[0], p[1], (metres[0], metres[1])
                 elif axis == 1:  # a figure's front is Blender -Y
@@ -186,6 +205,31 @@ class Shape:
         full = self.origin @ matrix
         made = bmesh.ops.create_icosphere(self.bm, subdivisions=1, radius=radius, matrix=full)
         self._texture(made, full, tile, (2 * radius, 2 * radius, 2 * radius))
+
+    def solid(self, points, faces, matrix, tile, uvs=None):
+        """A closed mesh: `points` in its own frame, `faces` as lists of point indices
+        (any winding; normals are made to point out). `uvs`, one per face, is
+        (panel, {point index: (u, v)}); without it panels are box-projected."""
+        full = self.origin @ matrix
+        verts = [self.bm.verts.new(full @ Vector(p)) for p in points]
+        made = [self.bm.faces.new([verts[i] for i in face]) for face in faces]
+        bmesh.ops.recalc_face_normals(self.bm, faces=made)
+        if uvs is None:
+            low = [min(p[i] for p in points) for i in range(3)]
+            extent = [max(max(p[i] for p in points) - low[i], 1e-6) for i in range(3)]
+            self._texture({"verts": verts}, full, tile, extent, low)
+            return
+        index = {vert: i for i, vert in enumerate(verts)}
+        if self.group is not None:
+            for vert in verts:
+                vert[self.deform][self.groups.index(self.group)] = 1.0
+        for face, (panel, corners) in zip(made, uvs):
+            face.smooth = False
+            for loop in face.loops:
+                material, loop[self.uv].uv = self.atlas.map(tile, panel, *corners[index[loop.vert]], None)
+            if material not in self.materials:
+                self.materials.append(material)
+            face.material_index = self.materials.index(material)
 
     def polygon(self, points, tile, facing):
         """A flat upright polygon through `points`, wound so its normal agrees with `facing`."""
@@ -283,7 +327,8 @@ def export(path, animations=False):
         export_animation_mode="NLA_TRACKS",  # one clip per NLA track name
         export_force_sampling=True,
         export_frame_range=False,
-        export_optimize_animation_size=False,
+        export_optimize_animation_size=True,  # drops repeated keys (the never-changing scales), keeping every channel
+        export_optimize_animation_keep_anim_armature=True,  # so a clip still holds every bone when the page blends clips
     )
 
 

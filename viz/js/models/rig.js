@@ -5,6 +5,7 @@
 // three panels, and lets reduced motion jump straight to a last frame.
 import * as THREE from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
+import { clipTime } from './frames.js';
 
 // loops: names of the clips that repeat; every other clip holds its last frame.
 export function createRig(gltf, loops = []) {
@@ -18,7 +19,10 @@ export function createRig(gltf, loops = []) {
     action.clampWhenFinished = true;
     action.play();
     action.setEffectiveWeight(0);
-    actions.set(clip.name, { action, duration: clip.duration, looping });
+    // the bake's frame step: a bone that holds still is exported with only its first and last keys
+    const steps = clip.tracks.filter((track) => track.times.length > 2).map((track) => track.times[1] - track.times[0]);
+    const step = steps.length > 0 ? Math.min(...steps) : 0;
+    actions.set(clip.name, { action, duration: clip.duration, looping, step });
   });
   const played = new Set(); // clips that have been shown, for checking in the browser
 
@@ -29,10 +33,10 @@ export function createRig(gltf, loops = []) {
     layers.forEach(({ clip, time, weight = 1 }) => {
       const entry = actions.get(clip);
       if (!entry || weight <= 0) return;
-      const { action, duration, looping } = entry;
+      const { action, duration, looping, step } = entry;
       action.enabled = true;
       action.paused = false;
-      action.time = looping ? ((time % duration) + duration) % duration : THREE.MathUtils.clamp(time, 0, duration - 1e-4);
+      action.time = clipTime(time, { duration, looping, step });
       action.setEffectiveWeight(weight);
       played.add(clip);
     });

@@ -10,38 +10,20 @@ import { toScene } from './coords.js';
 import { buildWorld } from './world.js';
 import { createPlay } from './play.js';
 import { WATCHING } from './outcomes.js';
-import { RELEASE, cutAt, shotFor } from './director.js';
+import { CAMERAS, RELEASE, VERTICAL_FOV, cutAt, fovFor, shotFor } from './director.js';
 import { buildBall } from './models/ball.js';
 import { buildStumps } from './models/stumps.js';
 import { buildBatter } from './models/batter.js';
 import { buildBowler } from './models/bowler.js';
-import { buildSlip } from './models/fielders.js';
-import { buildBackdrops, skyFor } from './models/backdrops.js';
+import { buildRingFielder, buildSlip } from './models/fielders.js';
+import { buildBackdrops, buildStadium, skyFor } from './models/backdrops.js';
 import { textureReport } from './models/load.js';
-
-const VERTICAL_FOV = 34;
-const MIN_HORIZONTAL_FOV = 24; // narrow views widen their lens instead of cropping the pitch
-
-// Camera positions and targets in data coordinates.
-const CAMERAS = {
-  stumps: { label: 'Behind the stumps', position: [0.2, -6.6, 2.5], target: [0.15, 4, 0.7] },
-  side: { label: 'Side on', position: [11.5, 3.1, 1.4], target: [0, 3.1, 0.8] },
-  above: { label: 'From above', position: [0.2, 2.88, 14], target: [0.2, 2.9, 0] },
-};
 
 export const cameraOptions = Object.entries(CAMERAS).map(([value, { label }]) => ({ value, label }));
 
-const radians = THREE.MathUtils.degToRad;
-const degrees = THREE.MathUtils.radToDeg;
 const toData = (v) => [v.x, -v.z, v.y]; // the inverse of coords.js
 
-function fovFor(aspect) {
-  const horizontal = 2 * Math.atan(Math.tan(radians(VERTICAL_FOV) / 2) * aspect);
-  if (degrees(horizontal) >= MIN_HORIZONTAL_FOV) return VERTICAL_FOV;
-  return degrees(2 * Math.atan(Math.tan(radians(MIN_HORIZONTAL_FOV) / 2) / aspect));
-}
-
-// models: what models/load.js resolved, { batter, bowler, slip, stumps, <venue key>... }
+// models: what models/load.js resolved, { batter, bowler, slip, fielder, stumps, stadium, <venue key>... }
 // onSound(name, level) is called when a view's delivery reaches one of its sound cues.
 export function createStage(constants, venueKeys, models, { onSound } = {}) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -54,7 +36,8 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(skyFor());
-  scene.add(buildWorld(constants));
+  const stadium = buildStadium(models.stadium, venueKeys);
+  scene.add(buildWorld(constants, { boundary: !stadium.group })); // the stadium brings its own rope and stands
 
   const actors = {
     ball: buildBall(constants.ball_radius),
@@ -63,12 +46,14 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
     wicket: buildStumps(models.stumps, constants, 0),
   };
   const slip = buildSlip(models.slip);
+  const fielder = buildRingFielder(models.fielder, constants);
   const backdrops = buildBackdrops(Object.fromEntries(venueKeys.map((key) => [key, models[key]])), constants.pitch_length);
   scene.add(
     actors.ball.group, actors.batter.group, actors.bowler.group, actors.wicket.group,
     buildStumps(models.stumps, constants, constants.pitch_length).group, // the bowler's end, never broken
-    slip.group, ...Object.values(backdrops),
+    slip.group, fielder.group, ...Object.values(backdrops),
   );
+  if (stadium.group) scene.add(stadium.group);
 
   const camera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500); // the visitor's, moved by dragging
   const directorCamera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500);
@@ -83,6 +68,7 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
   let dirty = true;
   let lastTime = 0;
   let takenOver = false; // the visitor has grabbed the camera back from the director
+  let cameraName = 'stumps'; // the preset chosen, which the director's cut 3 lands on
   const invalidate = () => { dirty = true; };
   const observer = new ResizeObserver(invalidate);
   controls.addEventListener('change', invalidate);
@@ -90,7 +76,8 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
   window.addEventListener('resize', invalidate);
 
   function setCamera(name) {
-    const preset = CAMERAS[name] ?? CAMERAS.stumps;
+    cameraName = CAMERAS[name] ? name : 'stumps';
+    const preset = CAMERAS[cameraName];
     camera.position.copy(toScene(...preset.position));
     controls.target.copy(toScene(...preset.target));
     controls.update();
@@ -205,6 +192,10 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
   function pose(view, aspect, clock) {
     scene.background.setHex(skyFor(view.venue));
     Object.entries(backdrops).forEach(([key, backdrop]) => { backdrop.visible = key === view.venue; });
+    stadium.show(view.venue);
+    const idle = reducedMotion.matches ? 0 : clock; // the fielders hold still under reduced motion
+    slip.pose(idle);
+    fielder.pose(idle);
     views.forEach((other) => {
       if (other.play) other.play.group.visible = other === view;
     });
@@ -217,28 +208,31 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
       view.play.apply(view.time, actors, clock);
     }
 
-    const zoom = fovFor(aspect) / VERTICAL_FOV;
+    const presetFov = fovFor(aspect, CAMERAS[cameraName].minHorizontalFov);
     if (!view.play || view.play.lead === 0 || takenOver) {
       setTag(view, null);
       camera.aspect = aspect;
-      camera.fov = VERTICAL_FOV * zoom;
+      camera.fov = presetFov;
       camera.updateProjectionMatrix();
       return camera;
     }
-    const cut = cutAt(view.time, { eventTime: view.play.decided ? view.play.eventTime : Infinity });
+    const cut = cutAt(view.time, {
+      eventTime: view.play.decided ? view.play.eventTime : Infinity,
+      camera: cameraName,
+      through: view.animation?.ball === 'through',
+    });
     const shot = shotFor(cut, {
       time: view.time,
       side: view.arm === 'left' ? -1 : 1,
       pitchLength: constants.pitch_length,
       ball: actors.ball.group.visible ? toData(actors.ball.group.position) : null,
       impact: toData(view.play.impact),
-      home: CAMERAS.stumps,
     });
     setTag(view, cut.tag);
     directorCamera.position.copy(toScene(...shot.position));
     directorCamera.lookAt(toScene(...shot.target));
     directorCamera.aspect = aspect;
-    directorCamera.fov = (shot.fov ?? VERTICAL_FOV) * zoom;
+    directorCamera.fov = shot.fov == null ? presetFov : shot.fov * (fovFor(aspect) / VERTICAL_FOV);
     directorCamera.updateProjectionMatrix();
     return directorCamera;
   }
@@ -269,8 +263,8 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
     const seconds = Math.min((time - lastTime) / 1000, 0.05);
     lastTime = time;
     advance(seconds);
-    // a delivery waiting for its ending (the game, paused at the bounce) keeps the batter's idle loop alive
-    const idling = !reducedMotion.matches && views.some((view) => view.play && !view.run && view.time < view.play.duration);
+    // the fielders' crouch, and the batter's stance while a delivery waits at the bounce, loop between balls
+    const idling = !reducedMotion.matches;
     if ((dirty || idling) && host && host.clientWidth > 0) {
       dirty = false;
       draw(time / 1000);
@@ -280,7 +274,10 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
 
   // What the mixers have shown and how the textures are set, read back live: for checking in the browser.
   const report = () => ({
-    clips: { batter: [...actors.batter.clips], bowler: [...actors.bowler.clips], stumps: [...actors.wicket.clips] },
+    clips: {
+      batter: [...actors.batter.clips], bowler: [...actors.bowler.clips], stumps: [...actors.wicket.clips],
+      slip: [...slip.clips], fielder: [...fielder.clips],
+    },
     textures: textureReport(),
   });
 

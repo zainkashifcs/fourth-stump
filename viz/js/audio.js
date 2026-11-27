@@ -1,27 +1,55 @@
 // Sound: a small Web Audio synth, no samples and no dependencies. The audio
 // context is only created or resumed inside a user gesture, and the choice of
-// on or off is remembered.
+// on or off is remembered. Besides the ball and bat it keeps a quiet crowd
+// murmur going and swells a crowd reaction over it for each outcome.
 //
-// `cuesFor` is pure and tested under node; nothing at the top of this module
-// touches the browser.
+// `cuesFor` and `clapTimes` are pure and tested under node; nothing at the
+// top of this module touches the browser.
+import { setCommentarySound } from './commentary.js';
 
 // Which sounds an outcome animation makes (names from outcomes.js), and when,
 // in seconds from the moment the ball meets the bat or reaches the stumps.
+// A cue must fall inside the delivery's tail (play.js) or it never fires.
 const CUES = {
-  'left-alone': [{ sound: 'whoosh', at: -0.1 }, { sound: 'glove', at: 0.4 }],
-  'play-and-miss': [{ sound: 'whoosh', at: -0.1 }, { sound: 'glove', at: 0.4 }],
-  middled: [{ sound: 'middled', at: 0 }],
-  'edged-short': [{ sound: 'nick', at: 0 }],
-  'edged-caught': [{ sound: 'nick', at: 0 }, { sound: 'glove', at: 0.42 }],
-  bowled: [{ sound: 'timber', at: 0 }, { sound: 'bails', at: 0.06 }],
+  'left-alone': [{ sound: 'whoosh', at: -0.1 }, { sound: 'glove', at: 0.4 }, { sound: 'pavilion-claps', at: 0.45 }],
+  'play-and-miss': [{ sound: 'whoosh', at: -0.1 }, { sound: 'glove', at: 0.4 }, { sound: 'ooh-short', at: 0.05 }],
+  middled: [{ sound: 'middled', at: 0 }, { sound: 'crisp-applause', at: 0.35 }],
+  'edged-short': [{ sound: 'nick', at: 0 }, { sound: 'ooh', at: 0.08 }],
+  'edged-caught': [{ sound: 'nick', at: 0 }, { sound: 'glove', at: 0.42 }, { sound: 'roar', at: 0.45 }, { sound: 'applause', at: 0.9 }],
+  bowled: [{ sound: 'timber', at: 0 }, { sound: 'bails', at: 0.04 }, { sound: 'roar', at: 0.12 }, { sound: 'applause', at: 0.6 }],
 };
 
 export const cuesFor = (animationName) => CUES[animationName] ?? [];
 
+// When the hand claps in a burst of applause fall: about `perSecond` a second
+// at full swell, building over the first 15% and thinning over the last 45%,
+// each with its own loudness, length and brightness so it reads as many hands.
+export function clapTimes(seconds, perSecond, random = Math.random) {
+  const SLOT = 0.01;
+  const claps = [];
+  for (let slot = 0; slot < seconds; slot += SLOT) {
+    const q = slot / seconds;
+    const rate = perSecond * Math.min(1, q / 0.15) * (q > 0.55 ? (1 - q) / 0.45 : 1);
+    const count = Math.floor(rate * SLOT + random());
+    for (let i = 0; i < count; i += 1) {
+      claps.push({ at: slot + random() * SLOT, gain: 0.35 + 0.65 * random(), length: 0.006 + 0.012 * random(), bright: random() });
+    }
+  }
+  return claps.sort((a, b) => a.at - b.at);
+}
+
 const STORAGE_KEY = 'fourth-stump:sound';
 
-// Each voice is a list of parts: an oscillator sweep ("tone") or filtered noise.
-// Times in seconds, frequencies in hertz, `gain` the peak level.
+// A wooden bail striking: a high-Q ring (a decaying sine is a resonator's
+// impulse response) over a short noise click at the same pitch.
+const clack = (frequency, at, gain) => [
+  { tone: 'sine', from: frequency, to: frequency * 0.985, at, length: 0.06, gain },
+  { noise: 'bandpass', frequency, q: 8, at, length: 0.014, gain: gain * 1.6 },
+];
+
+// Each voice is a list of parts: an oscillator sweep ("tone"), filtered noise,
+// or a burst of hand claps. Times in seconds, frequencies in hertz, `gain` the
+// peak level; a `swell` part rises to its peak at `peakAt` of its length.
 const VOICES = {
   chime: [
     { tone: 'sine', from: 392, to: 392, at: 0, length: 0.5, gain: 0.12 },
@@ -32,15 +60,21 @@ const VOICES = {
     { tone: 'sine', from: 120, to: 60, at: 0, length: 0.1, gain: 0.3 },
     { noise: 'lowpass', frequency: 500, q: 0.7, at: 0, length: 0.05, gain: 0.12 },
   ],
+  // the ball into an ash stump: a deep body that drops in pitch, a crack of wood and a thud
   timber: [
-    { tone: 'triangle', from: 140, to: 55, at: 0, length: 0.24, gain: 0.6 },
-    { noise: 'bandpass', frequency: 900, q: 1.2, at: 0, length: 0.05, gain: 0.4 },
+    { tone: 'sine', from: 195, to: 78, at: 0, length: 0.5, gain: 0.55 },
+    { tone: 'triangle', from: 390, to: 156, at: 0, length: 0.14, gain: 0.16 },
+    { noise: 'bandpass', frequency: 1100, q: 2.5, at: 0, length: 0.04, gain: 0.6 },
+    { noise: 'lowpass', frequency: 380, q: 0.7, at: 0, length: 0.09, gain: 0.25 },
   ],
+  // both bails pop out of the grooves, knock together, then land and tumble on the turf (40 to 480 ms after the stump)
   bails: [
-    { tone: 'square', from: 1400, to: 1250, at: 0, length: 0.03, gain: 0.09 },
-    { tone: 'square', from: 800, to: 760, at: 0.07, length: 0.03, gain: 0.08 },
-    { tone: 'square', from: 1150, to: 1050, at: 0.16, length: 0.035, gain: 0.07 },
-    { tone: 'square', from: 950, to: 900, at: 0.27, length: 0.03, gain: 0.05 },
+    ...clack(2150, 0, 0.16),
+    ...clack(1620, 0.035, 0.15),
+    ...clack(1980, 0.11, 0.11),
+    ...clack(1480, 0.19, 0.09),
+    ...clack(1760, 0.3, 0.06),
+    ...clack(1350, 0.44, 0.045),
   ],
   nick: [{ noise: 'bandpass', frequency: 2400, q: 9, at: 0, length: 0.04, gain: 0.7 }],
   glove: [
@@ -53,7 +87,30 @@ const VOICES = {
     { noise: 'bandpass', frequency: 520, q: 1.5, at: 0, length: 0.035, gain: 0.25 },
   ],
   whoosh: [{ noise: 'bandpass', frequency: 600, sweepTo: 1900, q: 1.1, at: 0, length: 0.3, gain: 0.1, swell: true }],
+  // crowd reactions
+  roar: [
+    { noise: 'bandpass', frequency: 420, sweepTo: 650, q: 0.6, at: 0, length: 3.2, gain: 0.3, swell: true, peakAt: 0.12 },
+    { noise: 'lowpass', frequency: 900, q: 0.5, at: 0.05, length: 2.6, gain: 0.12, swell: true, peakAt: 0.15 },
+  ],
+  applause: [{ claps: 90, frequency: 1500, q: 0.6, at: 0, length: 3.6, gain: 0.26 }],
+  'crisp-applause': [{ claps: 40, frequency: 2100, q: 0.8, at: 0, length: 1.6, gain: 0.2 }],
+  'pavilion-claps': [{ claps: 11, frequency: 1700, q: 0.7, at: 0, length: 1.8, gain: 0.16 }],
+  // a collective "ooh": breath through the two formants of the vowel, falling as it fades
+  ooh: [
+    { noise: 'bandpass', frequency: 330, sweepTo: 270, q: 5, at: 0, length: 1.5, gain: 0.5, swell: true, peakAt: 0.4 },
+    { noise: 'bandpass', frequency: 820, sweepTo: 660, q: 6, at: 0, length: 1.5, gain: 0.3, swell: true, peakAt: 0.4 },
+  ],
+  'ooh-short': [
+    { noise: 'bandpass', frequency: 340, sweepTo: 290, q: 5, at: 0, length: 0.75, gain: 0.32, swell: true, peakAt: 0.35 },
+    { noise: 'bandpass', frequency: 840, sweepTo: 720, q: 6, at: 0, length: 0.75, gain: 0.2, swell: true, peakAt: 0.35 },
+  ],
 };
+
+// Three panels bowl at once in Compare venues; one crowd reaction of a kind at a time is enough.
+const CROWD = new Set(['roar', 'applause', 'crisp-applause', 'pavilion-claps', 'ooh', 'ooh-short']);
+const CROWD_GAP = 1; // seconds
+
+const MURMUR_LEVEL = 0.018;
 
 export const soundNames = Object.keys(VOICES);
 
@@ -75,6 +132,8 @@ export function createAudio() {
   let enabled = remembered();
   let context = null;
   let noiseBuffer = null;
+  let murmur = null; // { source, lfo, envelope } while the crowd murmurs
+  const lastCrowd = {};
   const history = []; // the last sounds scheduled, for checking by hand and in the browser test
 
   const button = document.createElement('button');
@@ -84,6 +143,7 @@ export function createAudio() {
   function paint() {
     button.textContent = `[ SOUND: ${enabled ? 'ON' : 'OFF'} ]`;
     button.setAttribute('aria-pressed', String(enabled));
+    setCommentarySound(enabled);
   }
 
   // Runs inside a user gesture only: browsers refuse to start audio otherwise.
@@ -93,15 +153,45 @@ export function createAudio() {
     if (!Context) return;
     context ??= new Context();
     if (context.state === 'suspended') context.resume();
+    startMurmur();
   }
 
   function noise() {
     if (!noiseBuffer) {
-      noiseBuffer = context.createBuffer(1, context.sampleRate * 0.5, context.sampleRate);
+      noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
       const samples = noiseBuffer.getChannelData(0);
       for (let i = 0; i < samples.length; i += 1) samples[i] = Math.random() * 2 - 1;
     }
     return noiseBuffer;
+  }
+
+  // Renders a burst of applause into a buffer, normalised to a peak of one.
+  function clapBuffer(seconds, perSecond) {
+    const rate = context.sampleRate;
+    const buffer = context.createBuffer(1, Math.ceil(rate * seconds), rate);
+    const samples = buffer.getChannelData(0);
+    clapTimes(seconds, perSecond).forEach((clap) => {
+      const first = Math.floor(clap.at * rate);
+      const length = Math.floor(clap.length * rate);
+      let previous = 0;
+      for (let j = 0; j < length && first + j < samples.length; j += 1) {
+        const white = Math.random() * 2 - 1;
+        const envelope = (1 - Math.exp(-j / (rate * 0.0007))) * Math.exp(-j / (length * 0.3));
+        samples[first + j] += clap.gain * envelope * (white - clap.bright * previous); // a brighter clap is more high-passed
+        previous = white;
+      }
+    });
+    const peak = samples.reduce((max, value) => Math.max(max, Math.abs(value)), 0) || 1;
+    for (let i = 0; i < samples.length; i += 1) samples[i] /= peak;
+    return buffer;
+  }
+
+  function filtered(type, frequency, q, start) {
+    const filter = context.createBiquadFilter();
+    filter.type = type;
+    filter.Q.value = q;
+    filter.frequency.setValueAtTime(frequency, start);
+    return filter;
   }
 
   function schedule(part, start, level) {
@@ -110,9 +200,10 @@ export function createAudio() {
     const end = start + part.length;
     if (part.swell) {
       envelope.gain.setValueAtTime(0.0001, start);
-      envelope.gain.exponentialRampToValueAtTime(peak, start + part.length * 0.45);
+      envelope.gain.exponentialRampToValueAtTime(peak, start + part.length * (part.peakAt ?? 0.45));
     } else {
       envelope.gain.setValueAtTime(peak, start);
+      if (part.claps) envelope.gain.setValueAtTime(peak, end - 0.15); // the claps carry their own swell
     }
     envelope.gain.exponentialRampToValueAtTime(0.0001, end);
     envelope.connect(context.destination);
@@ -124,17 +215,21 @@ export function createAudio() {
       source.frequency.setValueAtTime(part.from, start);
       source.frequency.exponentialRampToValueAtTime(part.to, end);
       source.connect(envelope);
+      source.start(start);
+    } else if (part.claps) {
+      source = context.createBufferSource();
+      source.buffer = clapBuffer(part.length, part.claps);
+      source.connect(filtered('bandpass', part.frequency, part.q, start)).connect(envelope);
+      source.start(start);
     } else {
       source = context.createBufferSource();
       source.buffer = noise();
-      const filter = context.createBiquadFilter();
-      filter.type = part.noise;
-      filter.Q.value = part.q;
-      filter.frequency.setValueAtTime(part.frequency, start);
+      source.loop = true;
+      const filter = filtered(part.noise, part.frequency, part.q, start);
       if (part.sweepTo) filter.frequency.exponentialRampToValueAtTime(part.sweepTo, end);
       source.connect(filter).connect(envelope);
+      source.start(start, Math.random() * 1.5); // a different stretch of noise each time
     }
-    source.start(start);
     source.stop(end + 0.02);
   }
 
@@ -142,10 +237,44 @@ export function createAudio() {
   function play(name, level = 1) {
     const voice = VOICES[name];
     if (!voice || !enabled || !context || context.state !== 'running') return false;
+    if (CROWD.has(name)) {
+      if (context.currentTime - (lastCrowd[name] ?? -Infinity) < CROWD_GAP) return false;
+      lastCrowd[name] = context.currentTime;
+    }
     voice.forEach((part) => schedule(part, context.currentTime + part.at, level));
     history.push(name);
     if (history.length > 40) history.shift();
     return true;
+  }
+
+  // A Test ground between balls: low, filtered noise that breathes slowly.
+  function startMurmur() {
+    if (murmur || !enabled || !context || document.hidden) return;
+    const now = context.currentTime;
+    const source = context.createBufferSource();
+    source.buffer = noise();
+    source.loop = true;
+    const envelope = context.createGain();
+    envelope.gain.setValueAtTime(0.0001, now);
+    envelope.gain.exponentialRampToValueAtTime(MURMUR_LEVEL, now + 1.5);
+    const lfo = context.createOscillator();
+    const depth = context.createGain();
+    lfo.frequency.value = 0.13;
+    depth.gain.value = MURMUR_LEVEL * 0.35;
+    lfo.connect(depth).connect(envelope.gain);
+    source.connect(filtered('lowpass', 520, 0.5, now)).connect(envelope).connect(context.destination);
+    source.start(now);
+    lfo.start(now);
+    murmur = { source, lfo };
+    history.push('murmur');
+  }
+
+  function stopMurmur() {
+    if (!murmur) return;
+    murmur.source.stop();
+    murmur.lfo.stop();
+    murmur = null;
+    history.push('murmur-stop');
   }
 
   button.addEventListener('click', () => {
@@ -153,11 +282,24 @@ export function createAudio() {
     remember(enabled);
     paint();
     if (enabled) unlock();
-    else context?.suspend();
+    else {
+      stopMurmur();
+      context?.suspend();
+    }
   });
   document.addEventListener('pointerdown', unlock);
   document.addEventListener('keydown', unlock);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopMurmur();
+    else startMurmur();
+  });
 
   paint();
-  return { button, play, history, isUnlocked: () => Boolean(context && context.state === 'running') };
+  return {
+    button,
+    play,
+    history,
+    isUnlocked: () => Boolean(context && context.state === 'running'),
+    get murmuring() { return Boolean(murmur); },
+  };
 }

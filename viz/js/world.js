@@ -16,6 +16,7 @@ const LAWS = {
 };
 
 const BOUNDARY = 76; // radius in metres, from the middle of the pitch
+const OUTFIELD = 130; // radius of the grass, past the stands (about 90 m from the stumps) so no sky shows under them
 const STRIPE = 7;
 
 // A flat rectangle lying on the ground, `width` across (x) and `length` up the pitch (y).
@@ -30,7 +31,7 @@ function flat(width, length, material, x, y, lift) {
 function buildGround(pitchLength) {
   const group = new THREE.Group();
   const middle = pitchLength / 2;
-  const outfield = new THREE.Mesh(new THREE.CircleGeometry(BOUNDARY + 22, 40), flatMaterial(0x3f8f47));
+  const outfield = new THREE.Mesh(new THREE.CircleGeometry(OUTFIELD, 48), flatMaterial(0x3f8f47));
   outfield.rotation.x = -Math.PI / 2;
   outfield.position.copy(toScene(0, middle, 0));
   outfield.receiveShadow = true;
@@ -109,15 +110,16 @@ function buildLights(pitchLength) {
   return group;
 }
 
-export function buildWorld(constants) {
+// boundary: draw the plain boards and bank, for when the stadium model is missing.
+export function buildWorld(constants, { boundary = true } = {}) {
   const length = constants.pitch_length;
   const world = new THREE.Group();
   world.add(
     buildGround(length),
     buildCreases(length),
     buildCorridor(constants),
-    buildBoundary(length),
     buildLights(length),
   );
+  if (boundary) world.add(buildBoundary(length));
   return world;
 }

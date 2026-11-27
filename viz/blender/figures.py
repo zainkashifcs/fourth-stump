@@ -1,54 +1,68 @@
-"""Low-poly Test cricketers in 1970s to 1990s whites: cream cable-knit sweater with
-navy and burgundy trim, flannels, cap or sun hat, and for the batter pads, gloves
-and a bat.
+"""Low-poly Test cricketers in 1970s to 1990s whites, in late-90s console
+proportions (about six heads tall, broad shoulders, a chest tapering to the
+waist): cream cable-knit sweater with navy and crimson trim, flannels, cap or
+sun hat, and for the batter pads, gloves and a bat.
 
 Each figure is one mesh, rigidly skinned: every part follows exactly one bone, as
-on a PlayStation. Figures are authored in a rig frame, +Y up, facing +Z, left
-hand on +X, which is the frame the .glb ends up in. Limbs hang down their
-joint's -Y axis, so on a hanging limb a negative X rotation swings it forward
-and a positive Z rotation swings it to the left.
+on a PlayStation. Parts are lofts, rings of points joined into a closed solid,
+and every face is mapped onto a painted panel of the shared kit atlas. Figures
+are authored in a rig frame, +Y up, facing +Z, left hand on +X, which is the
+frame the .glb ends up in. Limbs hang down their joint's -Y axis, so on a hanging
+limb a negative X rotation swings it forward and a positive Z rotation swings it
+to the left.
 
 A pose is a dict of joint Euler angles, plus `root` (x, z), `lift` (height off
-the ground) and the bat's position. A clip is a list of timed poses, sampled at
-every frame through a spline and baked, so the hands stay on the bat between
-the poses.
+the ground), the bat's position, and optionally `hands`, two points the hands
+reach for. A clip is a list of timed poses, sampled at every frame through a
+spline and baked, so the hands stay on the bat between the poses.
 """
-from math import pi, sqrt
+from math import cos, hypot, inf, pi, sin, sqrt
 
+import bpy
 from mathutils import Matrix, Vector
 
-from lib import FPS, Shape, armature, bake, empty, scaled
-from textures import kit_atlas
+from lib import FPS, Shape, armature, bake, pose
+from textures import FACES, kit_atlas
 
 # Rig (x, y, z) is Blender (x, -z, y).
 TO_BLENDER = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
 DOWN = Vector((0, -1, 0))
 
-HIP, THIGH, SHIN = 0.92, 0.45, 0.47
-SHOULDER_X, SHOULDER_Y, UPPER_ARM, FOREARM = 0.22, 0.44, 0.29, 0.3
+HIP, THIGH, SHIN, ANKLE = 0.92, 0.44, 0.48, 0.42  # SHIN runs from the knee to the sole, ANKLE to the ankle
+HEEL, TOE = -0.065, 0.19  # the sole's ends, in the foot's frame
+SHOULDER_X, SHOULDER_Y, UPPER_ARM, FOREARM = 0.215, 0.475, 0.34, 0.35  # FOREARM ends at the middle of the hand (the grip)
+GRIPS = {"L": -0.06, "R": -0.19}  # where each hand holds the handle, down the bat from its top
+GRIP_TOLERANCE = 0.01  # how far a hand may end up from its place on the handle
 HANDLE, BLADE = 0.3, 0.56
-BAT_REST = Vector((0.36, 0.95, 0.1))  # where the bat hangs in the rest pose
+BAT_REST = Vector((0.36, 0.95, 0.1))  # where the bat hangs when no pose holds it
+BAT_FACE = 0.018  # the face of the blade, in front of the bat's axis
 
 # name: (parent, offset from the parent joint), parents first
 JOINTS = {
     "body": (None, (0, 0, 0)),  # carries the pose offset and the lift that grounds the feet
     "hips": ("body", (0, HIP, 0)),
     "torso": ("hips", (0, 0, 0)),
-    "head": ("torso", (0, 0.5, 0)),
+    "head": ("torso", (0, 0.54, 0)),
     "armL": ("torso", (SHOULDER_X, SHOULDER_Y, 0)),
     "foreL": ("armL", (0, -UPPER_ARM, 0)),
     "armR": ("torso", (-SHOULDER_X, SHOULDER_Y, 0)),
     "foreR": ("armR", (0, -UPPER_ARM, 0)),
-    "legL": ("hips", (0.1, 0, 0)),
+    "legL": ("hips", (0.092, 0, 0)),
     "shinL": ("legL", (0, -THIGH, 0)),
-    "legR": ("hips", (-0.1, 0, 0)),
+    "legR": ("hips", (-0.092, 0, 0)),
     "shinR": ("legR", (0, -THIGH, 0)),
+    "footL": ("shinL", (0, -ANKLE, 0)),
+    "footR": ("shinR", (0, -ANKLE, 0)),
 }
-# how far each bone's tail lies from its head, along rig Y
+# how far each bone's tail lies from its head, along the joint's Y
 BONE_LENGTH = {
-    "body": 0.1, "hips": 0.12, "torso": 0.45, "head": 0.22, "armL": -UPPER_ARM, "foreL": -FOREARM,
-    "armR": -UPPER_ARM, "foreR": -FOREARM, "legL": -THIGH, "shinL": -SHIN, "legR": -THIGH, "shinR": -SHIN,
+    "body": 0.1, "hips": 0.12, "torso": 0.5, "head": 0.3, "armL": -UPPER_ARM, "foreL": -FOREARM,
+    "armR": -UPPER_ARM, "foreR": -FOREARM, "legL": -THIGH, "shinL": -ANKLE, "legR": -THIGH, "shinR": -ANKLE,
+    "footL": ANKLE - SHIN, "footR": ANKLE - SHIN,
+    "bat": -(HANDLE + BLADE), "release": -0.08, "catch": 0.08,
 }
+EXTRA_PARENT = {"bat": "body", "release": "foreR", "catch": "body"}
+BODY_PARTS = ("head", "torso", "hips", "legL", "shinL", "legR", "shinR", "footL", "footR")  # what must stay off the line of the ball
 
 
 def euler(angles):
@@ -70,72 +84,227 @@ def place(center, rot=(0, 0, 0)):
     return Matrix.Translation(TO_BLENDER @ Vector(center)) @ to_blender_rotation(euler(rot)).to_matrix().to_4x4()
 
 
-def box(shape, size, center, tile, rot=(0, 0, 0)):
-    width, height, depth = size
-    shape.cube(scaled(place(center, rot), width, depth, height), tile)
+# Lofts --------------------------------------------------------------------------------
+# A ring is a list of (x, z) points going anticlockwise seen from above. Faces
+# whose outward normal points within about 67 degrees of +Z take the front panel,
+# of -Z the back panel, the rest a side panel; each panel is wrapped round its
+# run of faces by arc length on every ring, so the painting follows the form.
+
+def octo(hw, hd, cz=0.0, c=0.6):
+    """A chamfered box, half-width `hw` across and half-depth `hd` front to back."""
+    return [(c * hw, cz + hd), (-c * hw, cz + hd), (-hw, cz + 0.45 * hd), (-hw, cz - 0.45 * hd),
+            (-c * hw, cz - hd), (c * hw, cz - hd), (hw, cz - 0.45 * hd), (hw, cz + 0.45 * hd)]
 
 
-def prism(shape, top, bottom, height, center, tile, sides=6, squash=1.0):
-    shape.cone(bottom, top, height, sides, scaled(place(center), 1, squash, 1), tile)
+def hexa(hw, hd, cz=0.0):
+    return [(0.5 * hw, cz + hd), (-0.5 * hw, cz + hd), (-hw, cz), (-0.5 * hw, cz - hd), (0.5 * hw, cz - hd), (hw, cz)]
 
 
-# Parts, each in its own joint's frame ----------------------------------------
-
-def hips_part(shape):
-    box(shape, (0.3, 0.17, 0.19), (0, -0.03, 0), "flannel")
+def circle(radius, sides=12):
+    return [(radius * cos(2 * pi * (k + 0.5) / sides), radius * sin(2 * pi * (k + 0.5) / sides)) for k in range(sides)]
 
 
-def torso_part(shape):
-    prism(shape, 0.2, 0.165, 0.42, (0, 0.27, 0), "knit", squash=0.62)
-    prism(shape, 0.168, 0.168, 0.032, (0, 0.045, 0), "navy", squash=0.64)  # waist trim
-    prism(shape, 0.168, 0.168, 0.032, (0, 0.078, 0), "burgundy", squash=0.64)
-    for side in (-1, 1):  # the V of the neck, navy outside burgundy
-        box(shape, (0.026, 0.17, 0.012), (side * 0.04, 0.4, 0.118), "navy", rot=(0, 0, side * 0.42))
-        box(shape, (0.014, 0.13, 0.014), (side * 0.026, 0.405, 0.119), "burgundy", rot=(0, 0, side * 0.42))
-    box(shape, (0.46, 0.09, 0.2), (0, 0.455, 0), "knit")
+def scaled_ring(ring, sx=1.0, sz=1.0, dz=0.0):
+    return [(x * sx, z * sz + dz) for x, z in ring]
 
 
-def head_part(shape, face, hat):
-    box(shape, (0.16, 0.19, 0.17), (0, 0.1, 0), face)
-    box(shape, (0.07, 0.05, 0.07), (0, -0.01, 0), "skin")
+def _panels(ring):
+    area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:] + ring[:1]))
+    out = []
+    for (x0, z0), (x1, z1) in zip(ring, ring[1:] + ring[:1]):
+        nx, nz = (z1 - z0, x0 - x1) if area > 0 else (z0 - z1, x1 - x0)
+        nz /= max(hypot(nx, nz), 1e-9)
+        out.append("front" if nz > 0.38 else "back" if nz < -0.38 else "side")
+    return out
+
+
+def _runs(panels):
+    """Runs of neighbouring faces on the same panel, as lists of face indices."""
+    n = len(panels)
+    if len(set(panels)) == 1:
+        return [(panels[0], list(range(n)))]
+    runs = []
+    for i in range(n):
+        if panels[i] != panels[i - 1]:
+            run = [i]
+            while panels[(run[-1] + 1) % n] == panels[i]:
+                run.append((run[-1] + 1) % n)
+            runs.append((panels[i], run))
+    return runs
+
+
+def _arc(ring, panel, run):
+    """u at each point of a run on one ring, 0 at the run's start or end as the panel wants."""
+    n = len(ring)
+    points = [run[0]] + [(i + 1) % n for i in run]
+    lengths = [0.0]
+    for a, b in zip(points, points[1:]):
+        lengths.append(lengths[-1] + hypot(ring[b][0] - ring[a][0], ring[b][1] - ring[a][1]))
+    first, last = ring[points[0]], ring[points[-1]]
+    flip = {"front": first[0] > last[0], "back": first[0] < last[0], "side": first[1] < last[1]}[panel]
+    total = lengths[-1] or 1.0
+    return {p: (1 - s / total) if flip else s / total for p, s in zip(points, lengths)}
+
+
+def loft(shape, rings, tile, center=(0, 0, 0), rot=(0, 0, 0), v=None, ends=("cap", "cap")):
+    """A closed solid through `rings`, [(y, ring), ...] bottom first, in the part's
+    frame moved by `center` and `rot`. `v` gives each ring's height on the panels
+    (by default its y); `ends` the panel of the bottom and top caps, or
+    (panel, (u, v)) to paint a cap in one colour, or None to leave it open."""
+    n = len(rings[0][1])
+    points = [tuple(TO_BLENDER @ Vector((x, y, z))) for y, ring in rings for x, z in ring]
+    ys = [y for y, _ in rings]
+    vs = v or [(y - ys[0]) / ((ys[-1] - ys[0]) or 1) for y in ys]
+    runs = _runs(_panels(rings[len(rings) // 2][1]))
+    faces, uvs = [], []
+    for k in range(len(rings) - 1):
+        for panel, run in runs:
+            low, high = _arc(rings[k][1], panel, run), _arc(rings[k + 1][1], panel, run)
+            for i in run:
+                j = (i + 1) % n
+                a, b, c, d = k * n + i, k * n + j, (k + 1) * n + j, (k + 1) * n + i
+                faces.append([a, b, c, d])
+                uvs.append((panel, {a: (low[i], vs[k]), b: (low[j], vs[k]), c: (high[j], vs[k + 1]), d: (high[i], vs[k + 1])}))
+    for end, (y, ring), offset in zip(ends, (rings[0], rings[-1]), (0, (len(rings) - 1) * n)):
+        if end is None:
+            continue
+        index = list(range(offset, offset + n))
+        if isinstance(end, tuple):
+            uvs.append((end[0], {i: end[1] for i in index}))
+        else:
+            xs, zs = [p[0] for p in ring], [p[1] for p in ring]
+            w, d = (max(xs) - min(xs)) or 1, (max(zs) - min(zs)) or 1
+            uvs.append((end, {offset + i: ((x - min(xs)) / w, (max(zs) - z) / d) for i, (x, z) in enumerate(ring)}))
+        faces.append(index)
+    shape.solid(points, faces, place(center, rot), tile, uvs)
+
+
+def wedge(shape, base, tip, tile):
+    """A three-sided pyramid: a lock of hair, a nose."""
+    points = [tuple(TO_BLENDER @ Vector(p)) for p in (*base, tip)]
+    shape.solid(points, [[0, 1, 2], [0, 1, 3], [1, 2, 3], [2, 0, 3]], Matrix.Identity(4), tile)
+
+
+# Parts, each in its own joint's frame ---------------------------------------------
+
+def hips_part(shape, _look):
+    loft(shape, [(-0.10, octo(0.15, 0.095)), (0.03, octo(0.165, 0.105)), (0.12, octo(0.155, 0.1))], "seat",
+         ends=("cap", None))
+
+
+def torso_part(shape, _look):
+    loft(shape, [
+        (0.05, octo(0.168, 0.11)), (0.24, octo(0.17, 0.113, 0.004)),
+        (0.40, octo(0.228, 0.13, 0.014)), (0.50, octo(0.25, 0.114)), (0.56, octo(0.135, 0.086)),
+        (0.585, octo(0.07, 0.06, 0.005)),
+    ], "sweater", ends=(None, "cap"))
+
+
+def hair_locks(shape, hair, front, y, xs):
+    """Chunky locks hanging over the forehead from `y`, lying on the face at depth `front`."""
+    for i, x in enumerate(xs):
+        drop = 0.03 + 0.012 * (i % 2)
+        wedge(shape, [(x - 0.024, y, front), (x + 0.024, y, front), (x, y + 0.01, front - 0.03)],
+              (x + 0.006, y - drop, front + 0.006), hair)
+
+
+def head_part(shape, look):
+    skin, hair, hat = f"skin_{look['skin']}", f"hair_{look['hair']}", look["hat"]
+    loft(shape, [(0.0, hexa(0.06, 0.062)), (0.10, hexa(0.056, 0.058, 0.005))], skin, ends=(None, None))
+    loft(shape, [
+        (0.05, octo(0.058, 0.05, 0.06)), (0.10, octo(0.096, 0.094, 0.026)), (0.17, octo(0.104, 0.108, 0.012)),
+        (0.235, octo(0.108, 0.112, 0.006)), (0.31, octo(0.096, 0.104, -0.004)), (0.35, octo(0.05, 0.058, -0.01)),
+    ], f"face_{look['face']}", ends=(("front", (0.5, 0.01)), "cap"))
+    wedge(shape, [(0, 0.19, 0.113), (-0.022, 0.13, 0.113), (0.022, 0.13, 0.113)], (0, 0.136, 0.15), skin)  # nose
+    nape = 0.095 if look.get("long_hair") else 0.14
+    back = [(0.104, -0.04), (-0.104, -0.04), (-0.1, -0.084), (-0.052, -0.122), (0.052, -0.122), (0.1, -0.084)]
+    loft(shape, [(nape, scaled_ring(back, 0.92, 0.94)), (0.245, back)], hair, ends=("cap", None))
     if hat == "cap":
-        prism(shape, 0.092, 0.1, 0.07, (0, 0.225, 0), "cap")
-        box(shape, (0.14, 0.016, 0.1), (0, 0.195, 0.12), "cap")
+        hair_locks(shape, hair, 0.119, 0.232, (-0.062, -0.022, 0.02, 0.06))
+        loft(shape, [(0.226, octo(0.118, 0.124)), (0.30, octo(0.126, 0.13, -0.004)), (0.37, octo(0.072, 0.076))],
+             "cap", ends=(None, "cap"))
+        peak = [(-0.112, -0.035), (0.112, -0.035), (0.098, 0.03), (0.05, 0.075), (-0.05, 0.075), (-0.098, 0.03)]
+        loft(shape, [(-0.012, peak), (0.0, peak)], "peak", center=(0, 0.232, 0.12), rot=(0.18, 0, 0),
+             ends=(("front", (0.5, 0.5)), "cap"))
     elif hat == "sunhat":
-        prism(shape, 0.21, 0.21, 0.014, (0, 0.195, 0), "sunhat", sides=8)
-        prism(shape, 0.085, 0.095, 0.08, (0, 0.235, 0), "sunhat")
+        hair_locks(shape, hair, 0.119, 0.226, (-0.06, -0.02, 0.024, 0.062))
+        loft(shape, [(0.222, octo(0.118, 0.124)), (0.32, octo(0.11, 0.116, -0.004)), (0.372, octo(0.068, 0.072))],
+             "sunhat", ends=(None, "cap"))
+        inner, outer = circle(0.122), circle(0.245)
+        loft(shape, [(0.228, inner), (0.188, outer), (0.198, outer), (0.24, inner)], "brim",
+             v=[0.0, 0.33, 0.42, 1.0], ends=(None, None))
     else:
-        box(shape, (0.17, 0.05, 0.18), (0, 0.21, -0.005), "hair")
+        hair_locks(shape, hair, 0.12, 0.262, (-0.066, -0.026, 0.016, 0.058))
+        loft(shape, [(0.245, octo(0.114, 0.118, 0.003)), (0.31, octo(0.105, 0.113, -0.004)),
+                     (0.355, octo(0.076, 0.083, -0.008)), (0.378, octo(0.036, 0.04, -0.01))], hair)
 
 
-def arm_part(shape):
-    prism(shape, 0.054, 0.047, UPPER_ARM, (0, -UPPER_ARM / 2, 0), "knit", sides=5)
+def arm_part(shape, _look):
+    loft(shape, [(-UPPER_ARM - 0.01, hexa(0.048, 0.049)), (-0.12, hexa(0.066, 0.062, 0.004)),
+                 (0.03, hexa(0.08, 0.072)), (0.08, hexa(0.042, 0.048))], "sleeve", ends=(None, "cap"))
 
 
-def forearm_part(shape, gloves):
-    prism(shape, 0.046, 0.04, 0.25, (0, -0.125, 0), "knit", sides=5)
-    prism(shape, 0.043, 0.043, 0.03, (0, -0.225, 0), "navy", sides=5)  # cuff trim
-    size = 0.085 if gloves else 0.065
-    box(shape, (size, 0.1, size), (0, -FOREARM, 0), "glove" if gloves else "skin")
+def forearm_part(shape, look):
+    """The sleeve down to the cuff, then the hand, whose middle is the grip at -FOREARM."""
+    wrist = -FOREARM + 0.045
+    loft(shape, [(wrist, hexa(0.044, 0.042)), (wrist + 0.055, hexa(0.042, 0.04)), (-0.08, hexa(0.06, 0.057)),
+                 (0.035, hexa(0.048, 0.05))], "cuff", ends=(None, None))
+    g = -FOREARM
+    if look.get("gloves"):
+        loft(shape, [(g - 0.085, hexa(0.024, 0.04)), (g - 0.04, hexa(0.04, 0.06)),
+                     (g + 0.03, hexa(0.05, 0.058)), (g + 0.065, hexa(0.05, 0.05))], "glove", ends=("cap", None))
+    else:
+        loft(shape, [(g - 0.07, hexa(0.014, 0.028)), (g - 0.035, hexa(0.026, 0.046)), (g + 0.06, hexa(0.03, 0.036))],
+             f"skin_{look['skin']}", ends=("cap", None))
 
 
-def leg_part(shape):
-    prism(shape, 0.082, 0.066, THIGH, (0, -THIGH / 2, 0), "flannel", sides=5)
+def leg_part(shape, _look):
+    loft(shape, [(-0.46, hexa(0.056, 0.062)), (-0.22, hexa(0.085, 0.09, 0.006)),
+                 (-0.03, hexa(0.096, 0.102, 0.004)), (0.07, hexa(0.086, 0.092))], "flannel", ends=(None, None))
 
 
-def shin_part(shape, pads):
-    prism(shape, 0.062, 0.05, 0.42, (0, -0.21, 0), "flannel", sides=5)
-    box(shape, (0.1, 0.07, 0.25), (0, -0.435, 0.05), "boot")
-    if pads:
-        box(shape, (0.15, 0.44, 0.07), (0, -0.2, 0.075), "pad")
-        box(shape, (0.15, 0.16, 0.075), (0, 0.07, 0.085), "pad")  # knee roll
+SOLE = [(0.035, 0.19), (-0.035, 0.19), (-0.054, 0.03), (-0.046, -0.065), (0.046, -0.065), (0.054, 0.03)]
+PAD = [(0.045, 0.128), (-0.045, 0.128), (-0.088, 0.07), (-0.08, 0.012), (0.08, 0.012), (0.088, 0.07)]
 
 
-def bat_part(shape, half_width):
+def shin_part(shape, look):
+    loft(shape, [(-0.40, hexa(0.043, 0.045)), (-0.11, hexa(0.068, 0.078, -0.01)), (0.04, hexa(0.06, 0.066))],
+         "flannel", ends=(None, None))
+    if look.get("pads"):
+        loft(shape, [(-0.40, scaled_ring(PAD, 0.9, 0.9, 0.025)), (-0.12, PAD), (0.03, scaled_ring(PAD, 0.94, 0.94))],
+             "pad", ends=("cap", None))
+        roll = scaled_ring(PAD, 1.05, 1.15)
+        loft(shape, [(0.02, scaled_ring(roll, 0.95, 0.95)), (0.07, scaled_ring(roll, 1.08, 1.08)),
+                     (0.13, scaled_ring(roll, 0.85, 0.85))], "kneeroll", ends=(None, "cap"))
+
+
+def foot_part(shape, _look):
+    """The boot, its sole at -(SHIN - ANKLE) below the ankle."""
+    sole = ANKLE - SHIN
+    toe = [(x * 0.95, min(z, 0.175)) for x, z in SOLE]
+    ankle = [(x * 0.9, -0.06 + (z + 0.065) * 0.5) for x, z in SOLE]
+    loft(shape, [(sole, SOLE), (sole + 0.018, scaled_ring(SOLE, 1.03, 1.02)), (sole + 0.05, toe), (sole + 0.095, ankle)],
+         "boot", v=[0.0, 0.17, 0.55, 1.0], ends=("cap", None))
+
+
+def blade_ring(hw, spine, face=BAT_FACE):
+    return [(hw, face), (-hw, face), (-hw, -0.004), (-0.45 * hw, -spine), (0.45 * hw, -spine), (hw, -0.004)]
+
+
+def bat_part(shape, look):
     """Handle down -Y from the origin, then the blade; the face looks along +Z."""
-    prism(shape, 0.018, 0.018, HANDLE, (0, -HANDLE / 2, 0), "grip")
-    box(shape, (2 * half_width, BLADE, 0.04), (0, -HANDLE - BLADE / 2, 0), "blade")
-    box(shape, (half_width, BLADE * 0.8, 0.03), (0, -HANDLE - BLADE / 2, -0.03), "blade")  # spine
+    hw = look["bat"]
+    loft(shape, [(-HANDLE - 0.02, hexa(0.017, 0.017)), (0.0, hexa(0.017, 0.017))], "grip")
+    loft(shape, [(-HANDLE - BLADE, blade_ring(hw * 0.97, 0.027, 0.016)), (-HANDLE - 0.2, blade_ring(hw, 0.04)),
+                 (-HANDLE - 0.06, blade_ring(hw, 0.032)), (-HANDLE, blade_ring(hw * 0.55, 0.022, 0.012))], "blade",
+         v=[0.0, 0.36, 0.89, 1.0])
+
+
+PARTS = {
+    "hips": hips_part, "torso": torso_part, "head": head_part, "armL": arm_part, "foreL": forearm_part,
+    "armR": arm_part, "foreR": forearm_part, "legL": leg_part, "shinL": shin_part, "legR": leg_part, "shinR": shin_part,
+    "footL": foot_part, "footR": foot_part,
+}
 
 
 # Posing -------------------------------------------------------------------------
@@ -175,30 +344,49 @@ def bat_transform(pose):
     return Matrix.Translation(top) @ Matrix((x, y, z)).transposed().to_4x4()
 
 
+def hand(world, side):
+    return world["fore" + side] @ Vector((0, -FOREARM, 0))
+
+
 def solve(pose):
     """Joint frames for a pose, in the rig frame: the body lifted so the lower foot
-    rests on the ground (plus `lift`) and, when the pose holds a bat, both hands
-    on the handle. The bat and the bowling hand are joints too."""
+    rests on the ground (plus `lift`); when the pose holds a bat, both hands on the
+    handle; with `hands`, each hand on its point (relative to `root`). The bat, the
+    bowling hand and the point between the hands are joints too."""
     local = {joint: (Vector(offset), euler(pose.get(joint, (0, 0, 0)))) for joint, (_, offset) in JOINTS.items()}
     x, z = pose.get("root", (0, 0))
     local["body"] = (Vector((x, 0, z)), Matrix.Identity(4))
     world = forward(local)
-    lowest = min((world[shin] @ Vector((0, -SHIN, 0))).y for shin in ("shinL", "shinR"))
+    for foot in ("footL", "footR"):  # a foot's angles turn it from flat on the ground, square to the hips
+        flat = world["shin" + foot[-1]].to_quaternion().inverted() @ world["hips"].to_quaternion()
+        local[foot] = (local[foot][0], flat.to_matrix().to_4x4() @ local[foot][1])
+    world = forward(local)
+    lowest = min((world[foot] @ Vector((0, ANKLE - SHIN, end))).y for foot in ("footL", "footR") for end in (HEEL, TOE))
     local["body"] = (Vector((x, pose.get("lift", (0,))[0] - lowest, z)), Matrix.Identity(4))
     bat = Matrix.Translation(BAT_REST)
     if "bat_top" in pose:
         world = forward(local)
         bat = bat_transform(pose)
-        pole = Vector((0.2, -1, -0.5))
-        reach(local, world, "L", bat @ Vector((0, -0.06, 0)), pole)  # top hand
-        reach(local, world, "R", bat @ Vector((0, -0.19, 0)), pole)  # bottom hand
+        pole = Vector(pose.get("pole", NEUTRAL["pole"]))
+        for side, down in GRIPS.items():  # top hand, then bottom hand
+            reach(local, world, side, bat @ Vector((0, down, 0)), pole)
+    elif "hands" in pose:
+        world = forward(local)
+        left, right = (Vector(p) + Vector((x, 0, z)) for p in pose["hands"])
+        reach(local, world, "L", left, Vector((0.6, -0.4, -0.3)))
+        reach(local, world, "R", right, Vector((-0.6, -0.4, -0.3)))
     world = forward(local)
     world["bat"] = bat
     world["release"] = world["foreR"] @ Matrix.Translation((0, -FOREARM, 0))
+    world["catch"] = Matrix.Translation((hand(world, "L") + hand(world, "R")) / 2)
     return world
 
 
-REST = solve({})
+def grip_gap(pose):
+    """How far the hands of a bat-holding pose end up from their places on the handle:
+    zero unless a target was out of the arm's reach."""
+    world = solve(pose)
+    return max((hand(world, side) - world["bat"] @ Vector((0, down, 0))).length for side, down in GRIPS.items())
 
 
 def mirrored(pose):
@@ -206,13 +394,25 @@ def mirrored(pose):
     out = {}
     for key, value in pose.items():
         other = key[:-1] + {"L": "R", "R": "L"}[key[-1]] if key[-1] in "LR" else key
-        out[other] = (-value[0], value[1]) if key == "root" else value if key == "lift" else (value[0], -value[1], -value[2])
+        if key == "hands":
+            out[key] = tuple((-x, y, z) for x, y, z in reversed(value))
+        elif key in ("root", "pole"):
+            out[key] = (-value[0], *value[1:])
+        else:
+            out[other] = value if key == "lift" else (value[0], -value[1], -value[2])
     return out
 
 
 def spline(p0, p1, p2, p3, t):
     """Catmull-Rom: passes through p1 at t = 0 and p2 at t = 1."""
     return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t + (3 * p1 - p0 - 3 * p2 + p3) * t ** 3)
+
+
+NEUTRAL = {"root": (0, 0), "lift": (0,), "pole": (0.2, -1, -0.5)}  # what a key leaves out; joint angles default to zero
+
+
+def _flat(value):
+    return [c for item in value for c in item] if isinstance(value[0], tuple) else list(value)
 
 
 def sample(keys, time, loop):
@@ -229,95 +429,144 @@ def sample(keys, time, loop):
     start, end = keys[index][0], keys[index + 1][0]
     t = (time - start) / (end - start)
     poses = [key(index + i) for i in (-1, 0, 1, 2)]
+    if poses[1] is poses[2]:  # a held pose stays put
+        return dict(poses[1])
+    if poses[2] is poses[3]:  # ease into a hold, so the spline never overshoots it
+        poses[3] = poses[1]
+    if poses[0] is poses[1]:  # and out of one
+        poses[0] = poses[2]
     out = {}
     for name in set().union(*poses):
-        zero = (0, 0) if name == "root" else (0,) if name == "lift" else (0, 0, 0)
-        values = [p.get(name, zero) for p in poses]
-        out[name] = tuple(spline(*(v[i] for v in values), t) for i in range(len(zero)))
+        values = [_flat(p.get(name, NEUTRAL.get(name, (0, 0, 0)))) for p in poses]
+        mixed = [spline(*(v[i] for v in values), t) for i in range(len(values[0]))]
+        out[name] = (tuple(mixed[:3]), tuple(mixed[3:])) if name == "hands" else tuple(mixed)
     return out
 
 
-def frames(keys, loop=False):
-    """One dict of Blender-space joint frames per frame of the clip."""
+def frames(keys, loop, rest):
+    """One dict of Blender-space joint frames per frame of the clip, for a rig whose
+    bind pose is `rest` (rig-frame joint frames): each carries the bind pose's
+    vertices of its bone to where the pose puts them."""
     count = round(keys[-1][0] * FPS)
-    return [{joint: to_blender(matrix) for joint, matrix in solve(sample(keys, i / FPS, loop)).items()}
-            for i in range(count + 1)]
+    out = []
+    for i in range(count + 1):
+        world = solve(sample(keys, i / FPS, loop))
+        out.append({joint: to_blender(m) @ to_blender(rest[joint]).inverted() @ Matrix.Translation(TO_BLENDER @ rest[joint].translation)
+                    for joint, m in world.items()})
+    return out
 
 
-def build_figure(name, face, hat="none", pads=False, gloves=False, bat=None, pose=None):
-    """The figure's mesh. With `pose` it is modelled in that pose and returned as a
-    plain mesh; without, it is modelled at rest and returned on an armature."""
+def build_figure(name, look, rest_pose, extras=()):
+    """The figure's mesh, modelled in `rest_pose` (its bind pose, which a page that
+    plays no clip shows) on an armature called `name`."""
     shape = Shape(kit_atlas())
-    world = solve(pose) if pose is not None else REST
-    parts = {
-        "hips": hips_part, "torso": torso_part, "head": lambda s: head_part(s, face, hat),
-        "armL": arm_part, "foreL": lambda s: forearm_part(s, gloves), "armR": arm_part, "foreR": lambda s: forearm_part(s, gloves),
-        "legL": leg_part, "shinL": lambda s: shin_part(s, pads), "legR": leg_part, "shinR": lambda s: shin_part(s, pads),
-    }
-    if bat is not None:
-        parts["bat"] = lambda s: bat_part(s, bat)
+    world = solve(rest_pose)
+    parts = dict(PARTS)
+    if look.get("bat"):
+        parts["bat"] = bat_part
     for joint, draw in parts.items():
         shape.part(to_blender(world[joint]), joint)
-        draw(shape)
-    if pose is not None:
-        return shape.finish(name), world
+        draw(shape, look)
     mesh = shape.finish(f"{name}_mesh")
     bones = {}
-    for joint in [*JOINTS, "bat", "release"]:
-        if joint not in parts and joint not in ("body", "release"):
+    for joint in [*JOINTS, *extras]:
+        if joint not in parts and joint != "body" and joint not in extras:
             continue
-        head = TO_BLENDER @ REST[joint].translation
-        length = BONE_LENGTH.get(joint, -0.08 if joint == "release" else -(HANDLE + BLADE))
-        parent = "foreR" if joint == "release" else JOINTS.get(joint, (None,))[0]
-        bones[joint] = (parent, head, head + TO_BLENDER @ Vector((0, length, 0)))
-    return armature(name, bones, mesh), world
+        head = TO_BLENDER @ world[joint].translation
+        tail = head + TO_BLENDER @ (world[joint].to_3x3() @ Vector((0, BONE_LENGTH[joint], 0)))
+        parent = EXTRA_PARENT.get(joint) or JOINTS[joint][0]
+        bones[joint] = (parent, head, tail)
+    return armature(name, bones, mesh), mesh, world
+
+
+def body_edge(rig, mesh, clips, rest):
+    """The largest rig Z any body part reaches over the clips, measured on the
+    deformed mesh frame by frame (before the clips are baked, so nothing overrides the pose)."""
+    groups = {g.index for g in mesh.vertex_groups if g.name in BODY_PARTS}
+    body = [v.index for v in mesh.data.vertices if any(e.group in groups for e in v.groups)]
+    edge = -inf
+    for keys, loop in clips:
+        for joints in frames(keys, loop, rest):
+            pose(rig, joints)
+            depsgraph = bpy.context.evaluated_depsgraph_get()
+            depsgraph.update()
+            evaluated = mesh.evaluated_get(depsgraph)
+            deformed = evaluated.to_mesh()
+            edge = max(edge, max(-deformed.vertices[i].co.y for i in body))  # rig z is Blender -y
+            evaluated.to_mesh_clear()
+    return edge
 
 
 # Poses --------------------------------------------------------------------------
-# For the batter +Z is the off side and +X points up the pitch at the bowler.
+# For the batter +Z is the off side and +X points up the pitch at the bowler; the
+# page keeps the body's edge at least 0.15 m to the leg side of middle stump and the
+# fourth-stump corridor runs out to 0.28 m on the off side, so the body is kept at
+# rig z <= 0.25 and the middle of the bat's face reaches at least 0.43 m past the body's edge.
 # Bat points are (x, height above the ground, z) of the top of the handle and the toe.
 
+BAT_LINE, BODY_LIMIT, MIN_REACH = 0.67, 0.25, 0.43
+
 STANCE = {
-    "torso": (0.34, 0, 0), "head": (-0.22, 1.2, 0),
-    "legL": (-0.36, 0, 0.17), "shinL": (0.56, 0, 0), "legR": (-0.36, 0, -0.17), "shinR": (0.56, 0, 0),
-    "bat_top": (0.02, 0.86, 0.34), "bat_toe": (-0.2, 0.03, 0.3), "bat_face": (1, 0, 0),
+    "root": (0.0, -0.12),
+    "torso": (0.3, 0.05, 0), "head": (-0.22, 1.15, 0),
+    "legL": (-0.32, 0, 0.17), "shinL": (0.5, 0, 0), "legR": (-0.32, 0, -0.17), "shinR": (0.5, 0, 0),
+    "bat_top": (0.05, 0.88, 0.12), "bat_toe": (-0.13, 0.03, 0.15), "bat_face": (1, 0, 0),
 }
-TAP = {**STANCE, "bat_top": (0.03, 0.9, 0.34), "bat_toe": (-0.22, 0.14, 0.3)}
-FLEX = {**STANCE, "torso": (0.38, 0, 0), "legL": (-0.45, 0, 0.17), "shinL": (0.72, 0, 0), "legR": (-0.45, 0, -0.17), "shinR": (0.72, 0, 0)}
-BACKLIFT = {**STANCE, "torso": (0.3, 0, 0), "bat_top": (-0.08, 1.0, 0.3), "bat_toe": (-0.5, 1.22, 0.22), "bat_face": (1, 0.3, 0)}
+TAP = {**STANCE, "bat_top": (0.06, 0.92, 0.12), "bat_toe": (-0.15, 0.14, 0.15)}
+FLEX = {**STANCE, "torso": (0.3, 0.05, 0), "legL": (-0.4, 0, 0.17), "shinL": (0.64, 0, 0), "legR": (-0.4, 0, -0.17), "shinR": (0.64, 0, 0)}
+BACKLIFT = {**STANCE, "torso": (0.28, 0.05, 0), "bat_top": (-0.06, 1.0, 0.16), "bat_toe": (-0.45, 1.26, 0.1), "bat_face": (1, 0.3, 0)}
 
-DEFENSIVE_LINE = 0.52  # where the bat comes down, across from the batter's feet
 
-# Front foot down the pitch, head over the ball, bat angled down beside the front pad.
-FORWARD_DEFENSIVE = {
-    "root": (0.24, 0.15),
-    "torso": (0.42, 0.35, -0.34), "head": (-0.3, 0.95, 0.1),
-    "legL": (-0.28, 0, 0.62), "shinL": (0.34, 0, -0.5), "legR": (0.02, 0, -0.46), "shinR": (0.08, 0, 0),
-    "bat_top": (0.7, 0.84, DEFENSIVE_LINE), "bat_toe": (0.55, 0.05, DEFENSIVE_LINE), "bat_face": (1, -0.25, 0),
+def aimed(pose, line):
+    """The pose with its bat slid across so the middle of the face is at rig z `line`."""
+    middle = bat_transform(pose) @ Vector((0, -HANDLE - BLADE / 2, BAT_FACE))
+    dz = line - middle.z
+    return {**pose, "bat_top": (pose["bat_top"][0], pose["bat_top"][1], pose["bat_top"][2] + dz),
+            "bat_toe": (pose["bat_toe"][0], pose["bat_toe"][1], pose["bat_toe"][2] + dz)}
+
+
+# A long front stride down the pitch with the front knee over the foot, the trunk leaning
+# towards the bowler (not out over the off side), and the bat angled down from hands held
+# out ahead of the blade, its toe no wider than the hands.
+FORWARD_DEFENSIVE = aimed({
+    "root": (0.2, -0.033),
+    "torso": (0.225, 0.012, -0.306), "head": (-0.5, 1.09, 0.2),
+    "legL": (0.0, 0, 0.846), "shinL": (0.7, 0, -0.677), "legR": (0.02, 0, -0.784), "shinR": (0.1, 0, 0),
+    "bat_top": (0.307, 1.042, 0.6), "bat_toe": (-0.105, 0.287, 0.6), "bat_face": (1, -0.3, 0), "pole": (0.3, -1, 0.2),
+}, BAT_LINE)
+
+# Bat lifted high over the front shoulder, the head left where it was, letting the ball go.
+# The bat comes up in front of the front shoulder and tips back on the bowler's side
+# of the head, so it never crosses the head or cap.
+LEAVE_LIFT = {
+    **STANCE, "torso": (0.3, 0.12, 0), "head": (-0.22, 1.08, 0),
+    "bat_top": (0.2, 1.08, 0.27), "bat_toe": (-0.55, 1.36, 0.33), "bat_face": (0.2, 0.4, 1), "pole": (0.5, -0.8, 0.3),
 }
-
-# Bat lifted high and away, front pad forward, letting the ball go.
+LEAVE_RISE = {
+    **LEAVE_LIFT, "torso": (0.3, 0.2, 0), "head": (-0.22, 1.0, 0),
+    "bat_top": (0.35, 1.29, 0.36), "bat_toe": (0.43, 2.09, 0.27), "bat_face": (1, 0, 0.3), "pole": (0.6, -0.6, 0.5),
+}
+# the hands held well out towards the bowler and the off side, so from behind the stumps the gloves stay clear
+# of the head; the shoulders turn a little towards the bowler so the bottom hand reaches across
 SHOULDERING_ARMS = {
-    "root": (0.1, -0.04),
-    "torso": (0.06, 0, -0.06), "head": (-0.05, 1.3, 0),
-    "legL": (-0.14, 0, 0.4), "shinL": (0.2, 0, -0.3), "legR": (-0.04, 0, -0.2), "shinR": (0.1, 0, 0),
-    "bat_top": (-0.06, 1.5, 0.1), "bat_toe": (-0.36, 2.2, -0.16), "bat_face": (1, 0, 0.3),
+    **LEAVE_RISE, "torso": (0.3, 0.25, 0), "head": (-0.22, 0.95, 0),
+    "bat_top": (0.38, 1.36, 0.42), "bat_toe": (0.26, 2.14, 0.0), "pole": (0.4, -0.7, 0.8),
 }
 
-# A late push away from the body, the face of the bat open; then the head turns to follow the edge.
-EDGE_PUSH = {
-    "root": (0.15, 0.12),
-    "torso": (0.38, 0.3, -0.25), "head": (-0.3, 0.9, 0.1),
-    "legL": (-0.2, 0, 0.5), "shinL": (0.28, 0, -0.4), "legR": (0, 0, -0.4), "shinR": (0.08, 0, 0),
-    "bat_top": (0.55, 0.86, 0.6), "bat_toe": (0.42, 0.08, 0.68), "bat_face": (1, -0.2, 0.35),
-}
-EDGE_LOOK = {**EDGE_PUSH, "torso": (0.3, 0.0, -0.2), "head": (-0.05, -1.0, 0)}
+# The same stride with the hands pushed a little further out and the face of the bat
+# opened; then the head turns to follow the edge.
+EDGE_PUSH = aimed({
+    **FORWARD_DEFENSIVE, "root": (0.18, -0.04),
+    "bat_top": (0.27, 1.05, 0.6), "bat_toe": (-0.07, 0.25, 0.6), "bat_face": (1, -0.2, 0.4),
+}, BAT_LINE)
+EDGE_LOOK = {**EDGE_PUSH, "head": (-0.5, 0.6, 0.2)}
 
 CONTACT_TIME = 0.3  # into Forward_Defensive and Edge_Flash, when the bat meets the ball
 
 BATTER_CLIPS = {
     "Forward_Defensive": ([(0, STANCE), (0.13, BACKLIFT), (CONTACT_TIME, FORWARD_DEFENSIVE), (0.6, FORWARD_DEFENSIVE)], False),
-    "Leave_Shoulder_Arms": ([(0, STANCE), (0.13, BACKLIFT), (0.4, SHOULDERING_ARMS), (0.6, SHOULDERING_ARMS)], False),
+    "Leave_Shoulder_Arms": ([(0, STANCE), (0.12, LEAVE_LIFT), (0.25, LEAVE_RISE), (0.4, SHOULDERING_ARMS),
+                             (0.6, SHOULDERING_ARMS)], False),
     "Edge_Flash": ([(0, STANCE), (0.13, BACKLIFT), (CONTACT_TIME, EDGE_PUSH), (0.45, EDGE_PUSH), (0.65, EDGE_LOOK), (0.8, EDGE_LOOK)], False),
     # the idle goes on last, so it is also the pose the file opens in
     "Idle_Stance": ([(0, STANCE), (0.3, TAP), (0.6, STANCE), (0.9, FLEX), (1.2, STANCE)], True),
@@ -327,12 +576,12 @@ BATTER_CLIPS = {
 # straight back is pi/2, over the top is pi.
 RUN = {
     "torso": (0.3, -0.15, 0), "head": (-0.25, 0.1, 0),
-    "legL": (-0.8, 0, 0), "shinL": (0.35, 0, 0), "legR": (0.45, 0, 0), "shinR": (1.2, 0, 0),
+    "legL": (-0.8, 0, 0), "shinL": (0.35, 0, 0), "legR": (0.45, 0, 0), "shinR": (1.2, 0, 0), "footL": (-0.2, 0, 0), "footR": (0.9, 0, 0),
     "armR": (-0.7, 0, 0), "foreR": (-1.3, 0, 0), "armL": (0.6, 0, 0), "foreL": (-1.2, 0, 0),
 }
 RUN_PASS = {
     "lift": (0.06,), "torso": (0.3, 0, 0), "head": (-0.25, 0, 0),
-    "legL": (0, 0, 0), "shinL": (0.3, 0, 0), "legR": (-0.3, 0, 0), "shinR": (1.6, 0, 0),
+    "legL": (0, 0, 0), "shinL": (0.3, 0, 0), "legR": (-0.3, 0, 0), "shinR": (1.6, 0, 0), "footR": (0.5, 0, 0),
     "armR": (-0.05, 0, 0), "foreR": (-1.3, 0, 0), "armL": (0, 0, 0), "foreL": (-1.3, 0, 0),
 }
 GATHER = {  # the bound: off the ground, ball by the chin, front arm climbing
@@ -397,39 +646,77 @@ BOWLER_CLIPS = {
                            (0.75, FOLLOW), (1.0, RECOVER), (1.2, SETTLE)], False),
 }
 
+# First slip: a deep, wide crouch, hands cupped low in front, weight rocking side to side.
 CROUCH = {
-    "torso": (0.75, 0, 0), "head": (-0.55, 0, 0),
-    "legL": (-1.25, 0, 0.3), "shinL": (1.95, 0, 0), "legR": (-1.25, 0, -0.3), "shinR": (1.95, 0, 0),
-    "armL": (-1.0, 0, -0.3), "foreL": (-0.5, 0, 0), "armR": (-1.0, 0, 0.3), "foreR": (-0.5, 0, 0),
+    "torso": (1.0, 0, 0), "head": (-0.9, 0, 0),
+    "legL": (-1.1, 0, 0.42), "shinL": (1.65, 0, 0), "legR": (-1.1, 0, -0.42), "shinR": (1.65, 0, 0),
+    "hands": ((0.09, 0.42, 0.5), (-0.09, 0.42, 0.5)),
 }
+CROUCH_LEFT = {**CROUCH, "root": (0.035, 0), "lift": (0.01,), "torso": (1.0, 0.05, -0.07), "head": (-0.9, -0.04, 0.06),
+               "legL": (-1.16, 0, 0.36), "shinL": (1.75, 0, 0), "legR": (-1.04, 0, -0.46), "shinR": (1.55, 0, 0),
+               "hands": ((0.12, 0.43, 0.51), (-0.06, 0.42, 0.5))}
+SLIP_CLIPS = {"Idle_Crouch": ([(0, CROUCH), (0.6, CROUCH_LEFT), (1.2, CROUCH), (1.8, mirrored(CROUCH_LEFT)), (2.4, CROUCH)], True)}
+
+# A ring fielder walking in: half crouched, hands low and ready, rocking from foot to foot.
+READY = {
+    "torso": (0.52, 0, 0), "head": (-0.44, 0, 0),
+    "legL": (-0.6, 0, 0.14), "shinL": (0.9, 0, 0), "legR": (-0.6, 0, -0.14), "shinR": (0.9, 0, 0),
+    "hands": ((0.11, 0.66, 0.42), (-0.11, 0.66, 0.42)),
+}
+READY_LEFT = {**READY, "root": (0.03, 0.02), "lift": (0.015,), "torso": (0.52, 0.06, -0.05), "head": (-0.44, -0.05, 0.04),
+              "legL": (-0.68, 0, 0.12), "shinL": (1.0, 0, 0), "legR": (-0.45, 0, -0.16), "shinR": (0.8, 0, 0),
+              "hands": ((0.13, 0.67, 0.44), (-0.08, 0.66, 0.42))}
+FIELDER_CLIPS = {"Idle_Crouch": ([(0, READY), (0.4, READY_LEFT), (0.8, READY), (1.2, mirrored(READY_LEFT)), (1.6, READY)], True)}
 
 
-# The three figures ----------------------------------------------------------------
+# The four figures -----------------------------------------------------------------
+
+def _look(figure, **kit):
+    return {"face": figure, **FACES[figure], **kit}
+
+
+def _bake_all(rig, clips, rest):
+    for clip, (keys, loop) in clips.items():
+        bake(rig, clip, frames(keys, loop, rest))
+
 
 def build_batter(bat_half_width):
     """A right-hander in a cap, with Idle_Stance, Forward_Defensive,
-    Leave_Shoulder_Arms and Edge_Flash."""
-    rig, _ = build_figure("batter", "face_batter", hat="cap", pads=True, gloves=True, bat=bat_half_width)
+    Leave_Shoulder_Arms and Edge_Flash; bat_line and body_edge measured."""
+    rig, mesh, rest = build_figure("batter", _look("batter", hat="cap", pads=True, gloves=True, bat=bat_half_width), STANCE, ["bat"])
     for clip, (keys, loop) in BATTER_CLIPS.items():
-        bake(rig, clip, frames(keys, loop))
+        for i in range(round(keys[-1][0] * FPS) + 1):
+            gap = grip_gap(sample(keys, i / FPS, loop))
+            assert gap <= GRIP_TOLERANCE, f"{clip} frame {i}: a hand is {gap * 100:.1f} cm off the handle (out of reach)"
+    edge = body_edge(rig, mesh, BATTER_CLIPS.values(), rest)
+    assert edge <= BODY_LIMIT, f"the batter's body reaches rig z {edge:.3f}, past {BODY_LIMIT}"
+    contact = solve(sample(BATTER_CLIPS["Forward_Defensive"][0], CONTACT_TIME, False))
+    line = (contact["bat"] @ Vector((0, -HANDLE - BLADE / 2, BAT_FACE))).z
+    assert abs(line - BAT_LINE) < 0.02, f"the bat meets the ball at rig z {line:.3f}, not {BAT_LINE}"
+    assert line - edge >= MIN_REACH, f"the bat reaches only {line - edge:.3f} m past the body, not {MIN_REACH}"
+    _bake_all(rig, BATTER_CLIPS, rest)
     rig["contact_time"] = CONTACT_TIME
+    rig["bat_line"] = round(line, 3)
+    rig["body_edge"] = round(edge, 3)
 
 
 def build_bowler():
     """A right-arm fast bowler with RunUp_Stride, Bound_And_Deliver and
     Appeal_Celebrate, and a bone called `release` in the bowling hand."""
-    rig, _ = build_figure("bowler", "face_bowler")
-    for clip, (keys, loop) in BOWLER_CLIPS.items():
-        bake(rig, clip, frames(keys, loop))
+    rig, _, rest = build_figure("bowler", _look("bowler", hat="none"), RUN, ["release"])
+    _bake_all(rig, BOWLER_CLIPS, rest)
     rig["release_time"] = RELEASE_TIME
     rig["plant_time"] = PLANT_TIME
 
 
 def build_slip():
-    """First slip in a crouch, with an empty called `catch` between the hands."""
-    root = empty("slip")
-    mesh, world = build_figure("slip_mesh", "face_slip", hat="sunhat", pose=CROUCH)
-    mesh.parent = root
-    hands = [world[fore] @ Vector((0, -FOREARM, 0)) for fore in ("foreL", "foreR")]
-    catch = empty("catch", root)
-    catch.location = TO_BLENDER @ ((hands[0] + hands[1]) / 2)
+    """First slip in a sun hat, crouched (also the bind pose), with Idle_Crouch and
+    a bone called `catch` between the hands."""
+    rig, _, rest = build_figure("slip", _look("slip", hat="sunhat"), CROUCH, ["catch"])
+    _bake_all(rig, SLIP_CLIPS, rest)
+
+
+def build_fielder():
+    """A ring fielder (cover or mid-off) in a cap, walking in, with Idle_Crouch."""
+    rig, _, rest = build_figure("fielder", _look("fielder", hat="cap"), READY, ["catch"])
+    _bake_all(rig, FIELDER_CLIPS, rest)

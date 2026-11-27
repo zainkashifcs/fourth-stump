@@ -137,7 +137,8 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
   grid-template-rows: auto auto auto;
   column-gap: 16px;
 }
-.venue, .stumps-panel { display: grid; grid-row: span 3; grid-template-rows: subgrid; min-width: 0; }
+/* minmax(0, 1fr): the panel's own column never grows past the grid's to fit its widest content */
+.venue, .stumps-panel { display: grid; grid-row: span 3; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; cursor: grab; }
 .stage-canvas:active { cursor: grabbing; }
 .venue-head, .card, .endon-frame { position: relative; z-index: 1; }
@@ -179,6 +180,14 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
 }
 .cap-action { padding: 0 10px; background: var(--yellow); color: var(--black); }
 .cap-outcome { flex: 1; padding: 0 10px; background: var(--blue); color: var(--ink); }
+/* the commentator's line, stacked above the strap */
+.cap-lower { position: absolute; left: 6px; right: 6px; bottom: 6px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.cap-lower .cap-strap { position: static; }
+.cap-comment {
+  justify-self: start; max-width: 100%; margin: 0; padding: 1px 10px 2px; border: 1px solid var(--yellow);
+  background: var(--black); color: var(--ink); font-size: 1.1rem; line-height: 1.2;
+  animation: strap-on 0.3s steps(6) both;
+}
 .cap-flash {
   position: absolute; left: 0; right: 0; top: 13%; padding: 0 0 4px;
   background: var(--red); color: var(--yellow); text-align: center; text-transform: uppercase;
@@ -211,9 +220,10 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
 
 .action-table { width: 100%; border-collapse: collapse; }
 .action-table th, .action-table td { padding: 0 6px; text-align: right; font-weight: 400; }
-.action-table thead th { color: var(--cyan); text-transform: uppercase; white-space: nowrap; }
-.action-table tbody th { padding-left: 0; text-align: left; color: var(--ink); white-space: nowrap; }
-.action-table .figure { font-size: 2.1rem; line-height: 0.95; color: var(--yellow); }
+/* headings and the BETTER tag may wrap, and the figures shrink a little, so the table fits a venue column */
+.action-table thead th { color: var(--cyan); text-transform: uppercase; }
+.action-table tbody th { padding-left: 0; text-align: left; color: var(--ink); }
+.action-table .figure { font-size: clamp(1.6rem, 2vw, 2.1rem); line-height: 0.95; color: var(--yellow); white-space: nowrap; }
 .action-table .is-best { background: #12301f; }
 .action-table td.is-best { color: var(--green); }
 .unit { display: block; color: var(--dim); }
@@ -235,6 +245,8 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
 .game-viewport { position: absolute; inset: 0; height: auto; border-color: var(--venue, var(--ink)); }
 .game-viewport .cap-strap { font-size: 2rem; left: 14px; right: 14px; bottom: 16px; }
 .game-viewport .cap-flash { font-size: clamp(3.4rem, 7vw, 6.4rem); }
+.game-viewport .cap-lower { left: 14px; right: 14px; bottom: 16px; gap: 6px; }
+.game-viewport .cap-comment { font-size: 1.5rem; }
 .game-panel { display: grid; gap: 14px; }
 .game-count { color: var(--cyan); text-transform: uppercase; }
 .game-case h2 { margin: 2px 0 8px; padding: 6px 12px 4px; background: var(--panel); box-shadow: inset 0 3px 0 var(--venue, var(--ink)); color: var(--ink); font-size: 2.2rem; line-height: 1; text-transform: uppercase; }
@@ -305,6 +317,8 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
 .boot-state { color: var(--yellow); }
 .is-ok .boot-state { color: var(--green); }
 .boot-skip { justify-self: start; margin-top: 18px; }
+.boot.is-replay .boot-line { animation-delay: 0s; } /* a replay paces the lines itself */
+.boot-ready { margin-top: 10px; color: var(--yellow); animation: boot-line 0.18s steps(2) both; }
 .boot.is-leaving { animation: boot-wipe 0.42s steps(1) forwards; pointer-events: none; }
 @keyframes boot-line { from { opacity: 0; } to { opacity: 1; } }
 /* horizontal raster bands that thin out until the page shows through */

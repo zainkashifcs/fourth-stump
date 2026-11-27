@@ -11,6 +11,7 @@ import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { pointToScene } from './coords.js';
+import { extendToKeeper } from './geometry.js';
 import { WATCHING } from './outcomes.js';
 import { cuesFor } from './audio.js';
 
@@ -19,6 +20,7 @@ const RADIAL = 6;
 const TUBE_RADIUS = 0.04;
 const FLIGHT_SPEED = 13; // metres of path per second: slow motion, so the eye can follow
 const CATCH = 0.42; // seconds an edge takes to carry to slip
+const LIFT_IN = 0.15; // seconds over which the oversized ball rises off the line, so it leaves the hand exactly
 const TAIL = { dead: 1.3, 'edge-short': 1.4, 'edge-carry': 1.5, stumps: 1.2, through: 0.55 }; // a dismissal leaves time for the appeal
 
 const clamp01 = (value) => Math.min(Math.max(value, 0), 1);
@@ -65,6 +67,15 @@ function fractionAtIndex(path, index) {
     if (i <= index) upTo = total;
   }
   return total > 0 ? upTo / total : 0;
+}
+
+// How far along the resampled line (0..1) it first reaches the plane data y = planeY.
+function fractionAtPlane(points, planeY) {
+  const i = points.findIndex((p) => -p.z <= planeY);
+  if (i <= 0) return i === 0 ? 0 : 1;
+  const before = -points[i - 1].z;
+  const after = -points[i].z;
+  return (i - 1 + (before - planeY) / (before - after)) / (points.length - 1);
 }
 
 // Materials are shared between plays of the same colour and never disposed.
@@ -116,16 +127,19 @@ function buildRing(position, color) {
 
 // spec: { path, bounceIndex, arm, pauseIndex?, lead?, color, fan?, mean? }
 export function createPlay(spec, constants, catchPoint) {
-  const { path, bounceIndex, color, arm } = spec;
+  const { bounceIndex, color, arm } = spec;
+  // the line runs on past the stumps to the keeper's plane; only a delivery left or missed is drawn that far
+  const path = extendToKeeper(spec.path, { floor: constants.ball_radius });
   const lead = spec.lead ?? 0;
   const { line, length, bounceFraction } = smoothPath(path, bounceIndex);
+  const stumpsFraction = fractionAtPlane(line.points, 0);
   const flight = length / FLIGHT_SPEED;
   const ground = constants.ball_radius;
 
   // where the ball reaches the bat: the first sample past the popping crease, after any bounce
   const afterBounce = Math.ceil((bounceFraction ?? 0.5) * SAMPLES);
   const found = line.points.findIndex((p, i) => i >= afterBounce && p.z >= -constants.bat_plane_y);
-  const batFraction = (found < 0 ? SAMPLES : found) / SAMPLES;
+  const batFraction = found < 0 ? stumpsFraction : found / SAMPLES;
   const batTime = batFraction * flight;
   const lineAtBat = line.getPoint(batFraction).x;
   const pauseTime = spec.pauseIndex == null ? null
@@ -146,18 +160,20 @@ export function createPlay(spec, constants, catchPoint) {
   if (ring) group.add(ring);
 
   let animation = WATCHING;
-  let eventFraction = 1;
+  let eventFraction = stumpsFraction; // where the ball meets the bat or reaches the stumps
+  let endFraction = 1; // where the ball leaves the line
+  const impact = new THREE.Vector3();
   const from = new THREE.Vector3();
-  const direction = new THREE.Vector3();
 
   function setOutcome(next) {
     animation = next;
-    eventFraction = next.ball === 'dead' || next.ball.startsWith('edge') ? batFraction : 1;
-    line.getPoint(eventFraction, from);
-    direction.copy(from).sub(line.getPoint(eventFraction - 2 / SAMPLES)).normalize();
+    eventFraction = next.ball === 'dead' || next.ball.startsWith('edge') ? batFraction : stumpsFraction;
+    endFraction = next.ball === 'through' ? 1 : eventFraction;
+    line.getPoint(eventFraction, impact);
+    line.getPoint(endFraction, from);
   }
 
-  // Where the ball is `tau` seconds after it met the bat or reached the stumps.
+  // Where the ball is `tau` seconds after it leaves the line: off the bat, at the stumps, or at the keeper.
   // Scene axes: +X off side, +Y up, +Z behind the batter's wicket.
   function afterEvent(tau, ball) {
     const p = ball.group.position.copy(from);
@@ -185,10 +201,7 @@ export function createPlay(spec, constants, catchPoint) {
       p.z += 0.3 * easeOut(q);
       p.y = THREE.MathUtils.lerp(from.y, ground, q * q);
     } else {
-      const q = clamp01(tau / 0.42);
-      p.addScaledVector(direction, 3.2 * q);
-      p.y = Math.max(p.y, ground);
-      scale = 1 - smooth(clamp01((q - 0.7) / 0.3)); // gone through to the keeper, out of shot
+      scale = 1 - smooth(clamp01(tau / 0.15)); // taken by the keeper
     }
     ball.group.scale.setScalar(Math.max(scale, 0.001));
     ball.group.visible = scale > 0.01;
@@ -198,7 +211,8 @@ export function createPlay(spec, constants, catchPoint) {
   function apply(time, actors, clock = time) {
     const t = time - lead; // seconds since the ball left the hand
     const eventTime = eventFraction * flight;
-    const f = THREE.MathUtils.clamp(t / flight, 0, eventFraction);
+    const endTime = endFraction * flight;
+    const f = THREE.MathUtils.clamp(t / flight, 0, endFraction);
     const drawn = Math.floor(f * SAMPLES);
     tube.geometry.setDrawRange(0, drawn * RADIAL * 6);
     curtain.geometry.setDrawRange(0, drawn * 6);
@@ -224,9 +238,9 @@ export function createPlay(spec, constants, catchPoint) {
     if (t < 0) {
       actors.bowler.handPosition(ball.group.position); // still in the hand
     } else {
-      if (t <= eventTime) line.getPoint(f, ball.group.position);
-      else afterEvent(t - eventTime, ball);
-      ball.group.position.y += ball.lift;
+      if (t <= endTime) line.getPoint(f, ball.group.position);
+      else afterEvent(t - endTime, ball);
+      ball.group.position.y += ball.lift * clamp01(t / LIFT_IN);
     }
     ball.spin.rotation.x = -Math.max(t, 0) * 16;
 
@@ -262,9 +276,9 @@ export function createPlay(spec, constants, catchPoint) {
     dispose,
     lead,
     pauseTime: pauseTime == null ? null : lead + pauseTime,
-    impact: from, // where the ball meets the bat or the stumps, in scene coordinates
+    impact, // where the ball meets the bat or the stumps, in scene coordinates
     get decided() { return animation !== WATCHING; },
     get eventTime() { return lead + eventFraction * flight; },
-    get duration() { return lead + eventFraction * flight + TAIL[animation.ball]; },
+    get duration() { return lead + endFraction * flight + TAIL[animation.ball]; },
   };
 }

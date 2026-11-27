@@ -41,8 +41,12 @@ The single contact between a delivery and the pitch, treated as instantaneous. I
 _Avoid_: Pitch (reserved for the playing strip), impact, landing
 
 **Vertical restitution**:
-The fraction of a delivery's speed into the pitch that it keeps coming out of the bounce. High at Perth.
+The fraction of a delivery's speed into the pitch that it keeps coming out of the bounce. High at Perth on average; it varies from delivery to delivery (see variable bounce).
 _Avoid_: Bounciness, bounce coefficient, COR
+
+**Variable bounce**:
+The random difference in vertical restitution from one delivery to the next at a venue. It lets a delivery that usually clears the bails keep low.
+_Avoid_: Uneven bounce, bounce noise, jitter
 
 **Pace retention**:
 The fraction of a delivery's speed along the pitch that it keeps through the bounce. A fixed constant (0.887), not fitted to data. _Source: James, Carré and Haake (2004), Sports Engineering 7(1), 1–14._

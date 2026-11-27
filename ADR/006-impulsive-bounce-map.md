@@ -17,6 +17,14 @@ The surface normal is vertical at Perth and Newlands. At Lord's it is tilted by 
 - The kernel and the reference trajectory use the same bounce map with the same random draw. The bounce adds no error of its own; it only carries forward the first flight leg's error in where the ball lands.
 - Size of the slope effect, measured with the engine: 4.3 cm of sideways movement at the stumps for a good-length delivery (3.2 cm for a fuller one, 5.7 cm for a shorter one). The estimate made before the engine existed was 2–3 cm.
 
+## Amendment, 2026-11-27: variable bounce
+
+As first written, every delivery at a venue bounced with the same vertical restitution, so a release that cleared the bails once cleared them every time: at Perth the showcase delivery had exactly zero chance of bowling a batter who left it. Each delivery now draws its own restitution from a normal distribution around the venue mean, with spread `sigma_ez`, clamped to between 0 and 1. The batter expects the mean bounce.
+
+- `sigma_ez` is a stated assumption per venue (0.025 at Perth, 0.03 at Lord's, 0.035 at Newlands), not fitted: two historical rates already identify two parameters (ADR-010).
+- It is a third draw on each delivery's stream, after swing and seam deviation, so the determinism contract (ADR-003) is unchanged.
+- The kernel's error bound is unaffected: the kernel and the reference are compared at the same restitution.
+
 ## Verified constants (2026-11-27)
 
 These replace the estimates in the text above.

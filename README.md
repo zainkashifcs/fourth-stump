@@ -20,7 +20,7 @@ Machine: Intel Core i5-13450HX (10 cores, 16 threads), Windows 11, g++ 16.2 (MSY
 Flags: `-std=c++20 -O3 -march=native -ffp-contract=off -fopenmp`. No `-ffast-math`.
 `-march=native` means these figures belong to this machine.
 
-Each delivery in the throughput figure is the full pipeline: two normal draws, two flight legs, the bounce, the batter's expected arrival, and the outcome of both leaving and playing.
+Each delivery in the throughput figure is the full pipeline: three normal draws, two flight legs, the bounce, the batter's expected arrival, and the outcome of both leaving and playing.
 
 ## The decision
 
@@ -110,13 +110,13 @@ The honest comparison is the 10 ms row: the coarsest RK4 step that is at least a
 
 - **Determinism.** Each delivery's xoshiro256\*\* stream is a function of the seed and the delivery's index only, never of a thread. Per-delivery streams are required, not just convenient: Ziggurat sampling rejects, so deliveries consume a varying number of draws. Results are written by index and totals are integer counts. The promise is bit-reproducible across thread counts on one binary, and statistically reproducible across platforms, because the platform `exp` can differ in the last bit.
 - **Zero allocation.** The caller owns 64-byte-aligned structure-of-arrays buffers; the engine writes into them. The test sees `operator new` only: it cannot see `malloc` calls inside the OpenMP runtime, so it warms the runtime up first and runs at a fixed thread count.
-- **Common random numbers.** Measured in the tests: comparing two nearby conditions on the same seed cuts the variance of the difference by roughly 15 times against independent seeds (14 to 18 across runs). Comparing leave with play on the same deliveries cuts it by about 1.5 times.
+- **Common random numbers.** Measured in the tests: comparing two nearby conditions on the same seed cuts the variance of the difference by about 30 times against independent seeds. Comparing leave with play on the same deliveries cuts it by about 1.3 times.
 - **Header-only.** The engine is one header with no dependencies. OpenMP is optional at compile time.
 
 ## The model
 
 - **Forces.** Gravity, quadratic drag, and a seam side force `½ ρ A C_s v²` perpendicular to the ball's air-relative velocity. There is no Magnus term: seam-bowling swing comes from the seam tripping the airflow on one side of the ball, not from spin.
-- **Bounce.** The ball reflects about the pitch's surface normal, keeps a fraction `e_z` of its speed into the pitch and 0.887 of its speed along it, then turns sideways by a random seam deviation. At Lord's the normal is tilted by the slope: a 2.5 m fall across the ground, about 1.1°, which moves the ball three to six centimetres sideways by the stumps, depending on length (4.3 cm at a good length).
+- **Bounce.** The ball reflects about the pitch's surface normal, keeps a fraction `e_z` of its speed into the pitch and 0.887 of its speed along it, then turns sideways by a random seam deviation. `e_z` varies a little from one delivery to the next (variable bounce), so a delivery that usually clears the bails sometimes keeps low. At Lord's the normal is tilted by the slope: a 2.5 m fall across the ground, about 1.1°, which moves the ball three to six centimetres sideways by the stumps, depending on length (4.3 cm at a good length).
 - **The batter.** The batter tracks the true path until 0.2 s before the ball arrives, then commits the bat to where a delivery with mean swing and no seam deviation would arrive. Only movement after that commit point can beat the bat.
 - **Outcomes.** If played: a small gap is middled and scores; a gap near the bat's edge is an edge, which is a dismissal if it is an outside edge that carries to the slip cordon and is caught; a large gap is a play-and-miss, which is a dismissal if the ball goes on to hit the stumps. If left: a dismissal only if it hits the stumps.
 
@@ -130,20 +130,20 @@ Ball-by-ball data for 905 men's Tests (1.74 million deliveries, 2001 to 2026) co
 
 **Calibration.** Historical dismissal rates are seen only on deliveries a batter chose to play. The calibrator simulates a batter who follows a leave rule and matches two rates per venue on that population: the bowled rate identifies the spread of seam deviation, and the caught rate identifies catch conversion (the share of carrying edges that are caught).
 
-| Venue | New-ball deliveries | Seam deviation spread | Catch conversion | Restitution `e_z` (assumed) |
+| Venue | New-ball deliveries | Seam deviation spread | Catch conversion | Mean restitution `e_z` (assumed) |
 |---|---|---|---|---|
-| Lord's | 23,715 | 0.42° (0.40° to 0.44°) | 0.77 (0.64 to 0.91) | 0.52 |
-| Perth (WACA and Perth Stadium) | 10,949 | 0.51° (0.46° to 0.55°) | 0.17 (0.14 to 0.23) | 0.62 |
-| Newlands | 14,785 | 0.41° (0.38° to 0.43°) | 0.49 (0.40 to 0.61) | 0.56 |
+| Lord's | 23,715 | 0.42° (0.40° to 0.44°) | 0.73 (0.61 to 0.86) | 0.52 |
+| Perth (WACA and Perth Stadium) | 10,949 | 0.50° (0.45° to 0.54°) | 0.18 (0.14 to 0.24) | 0.62 |
+| Newlands | 14,785 | 0.41° (0.38° to 0.44°) | 0.47 (0.39 to 0.59) | 0.56 |
 
 Intervals are 95% bootstrap intervals for sampling noise in the counts only.
 
 What the calibration does and does not show:
 
-- On synthetic data the calibrator recovers both fitted parameters within 10% in 9 of 9 fits. A fit that ignores the leave rule understates catch conversion by 30% to 50%.
+- On synthetic data the calibrator recovers the seam deviation spread within 10% in 9 of 9 fits and catch conversion in 8 of 9 (the ninth is 10.3% high). A fit that ignores the leave rule understates catch conversion by 30% to 50%.
 - The data does not separate the venues' seam deviation.
 - Restitution and swing spread could not be identified from two rates and are fixed at assumed values. The fitted values are conditional on them: a restitution prior wrong by 0.05 moves catch conversion by about a factor of two.
-- Perth's catch conversion of 0.17 is not credible as a physical number. It says the assumed restitution of 0.62, with a slip cordon at a fixed distance, produces more carrying edges than the scorebook supports. An earlier fit that let restitution vary put it near 0.50 at all three venues; that fit is kept in `data/calibrated.json`.
+- Perth's catch conversion of 0.18 is not credible as a physical number. It says the assumed restitution of 0.62, with a slip cordon at a fixed distance, produces more carrying edges than the scorebook supports. An earlier fit that let restitution vary put it near 0.50 at all three venues; that fit is kept in `data/calibrated.json`.
 - The caught target is all catches, an upper bound on cordon catches. Counting only catches by the wicketkeeper gives catch conversions about 2.5 times smaller.
 - The fitted values are effective values for this outcome model, not measurements of the pitches.
 
@@ -172,10 +172,10 @@ make error-bound   # the error-bound table
 make viz-data      # regenerate viz/data/trajectories.json
 uv run python -m scraper                 # download and parse Cricsheet (cached)
 uv run python -m calibrator.run_expectancy
-uv run python -m calibrator.calibrate    # about 12 minutes
+uv run python -m calibrator.calibrate    # about 20 minutes
 ```
 
-Tests: 23 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 5 for the page's logic. All run offline.
+Tests: 25 C++ test cases (Catch2), 53 Python tests (pytest and hypothesis, including a property-based search of the envelope against the reference), and 5 for the page's logic. All run offline.
 
 | Path | Contents |
 |---|---|
@@ -203,7 +203,7 @@ The paper figures were read from abstract and index pages, not the full texts. T
 ## Assumptions that are not fitted
 
 - Each venue's mean swing coefficient, how fast swing fades with ball age (a Dukes ball is given a longer half-life than a Kookaburra), and each venue's wind.
-- Each venue's restitution and swing spread (see above).
+- Each venue's mean restitution and swing spread (see above), and how much restitution varies between deliveries (a standard deviation of 0.025 to 0.035).
 - The leave rule: leave when the expected arrival is more than 0.30 m outside off stump.
 - The population of releases used for calibration: right-arm over the wicket to a right-hander.
 - The slip cordon's distance (13 m), the pace an edge keeps, and the width of the edge band on the bat.

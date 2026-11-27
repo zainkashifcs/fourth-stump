@@ -63,33 +63,53 @@ def evaluate(release: list[float], c: Conditions, venue: str, ball_age: int, see
     }
 
 
+def random_delivery(release: list[float], venue: str, ball_age: int, end: int, arm: str, rng: np.random.Generator,
+                    points: int, read_swing: bool = False) -> tuple[dict, float]:
+    """Trace one delivery with its own swing coefficient, seam deviation and restitution.
+
+    With read_swing the batter has read this delivery's swing (the game); otherwise they expect the mean.
+    """
+    c = conditions_for(venue, ball_age, end, arm)
+    cs = c.cs_mean + c.sigma_swing * rng.standard_normal()
+    seam = c.sigma_seam * rng.standard_normal()
+    c.e_z = float(np.clip(c.e_z + c.sigma_ez * rng.standard_normal(), 0.0, 1.0))
+    if read_swing:
+        c.cs_mean = cs
+    return trace(release, cs, seam, c, points), cs
+
+
+def outcomes_of(t: dict, venue: str, rng: np.random.Generator) -> dict:
+    """Outcome names for both actions. An edge that carries is caught with the venue catch conversion."""
+    caught = rng.random() < catch_conversion_for(venue)
+    play = ("middled", "edged_safe", "edged_caught" if caught else "edged_safe", "missed", "missed_bowled")[t["play"]]
+    return {"leave": LEAVE_OUTCOMES[t["leave"]], "play": play}
+
+
 def scenario(venue: str, ball_age: int, arm: str, end: int, rng: np.random.Generator) -> dict:
     c = conditions_for(venue, ball_age, end, arm)
     release = release_for(arm)
     mean = trace(release, c.cs_mean, 0.0, c)
-    fan = [path_of(trace(release, c.cs_mean + c.sigma_swing * rng.standard_normal(),
-                         c.sigma_seam * rng.standard_normal(), c, 24)) for _ in range(FAN)]
+    fan = [random_delivery(release, venue, ball_age, end, arm, rng, 24)[0] for _ in range(FAN)]
     return {"venue": venue, "ball_age": ball_age, "arm": arm, "end": end, "path": path_of(mean),
-            "bounce_index": mean["bounce_index"], "fan": fan, **evaluate(release, c, venue, ball_age, SEED)}
+            "bounce_index": mean["bounce_index"], "fan": [path_of(t) for t in fan],
+            "fan_bounce_index": [t["bounce_index"] for t in fan],
+            "fan_outcomes": [outcomes_of(t, venue, rng) for t in fan],
+            **evaluate(release, c, venue, ball_age, SEED)}
 
 
 def game_delivery(i: int, rng: np.random.Generator) -> dict:
     venue, arm = str(rng.choice(list(VENUES))), str(rng.choice(ARMS))
     ball_age, end = int(rng.choice(BALL_AGES)), int(rng.integers(2))
-    c = conditions_for(venue, ball_age, end, arm)
     release = release_for(arm, line=rng.normal(LINE, 0.15), length=rng.normal(LENGTH, 1.0), speed=rng.normal(SPEED, 1.5))
-    cs = c.cs_mean + c.sigma_swing * rng.standard_normal()
-    # What the player can know at the bounce: this delivery's swing, not its seam deviation.
-    # The outcome shown and the expected values both use a batter who has read that swing.
+    actual, cs = random_delivery(release, venue, ball_age, end, arm, rng, 48, read_swing=True)
+    outcome = outcomes_of(actual, venue, rng)
+    # What the player can know at the bounce: this delivery's swing, not its seam deviation
+    # or how high it will bounce. The expected values use a batter who has read that swing.
     seen = conditions_for(venue, ball_age, end, arm)
     seen.cs_mean, seen.sigma_swing = cs, 0.0
-    actual = trace(release, cs, c.sigma_seam * rng.standard_normal(), seen)
-    # An edge that carries is caught with the venue catch conversion; otherwise it is safe.
-    caught = rng.random() < catch_conversion_for(venue)
-    outcome_play = ("middled", "edged_safe", "edged_caught" if caught else "edged_safe", "missed", "missed_bowled")[actual["play"]]
     return {"id": i, "venue": venue, "ball_age": ball_age, "arm": arm, "end": end, "path": path_of(actual),
-            "bounce_index": actual["bounce_index"], "outcome_leave": LEAVE_OUTCOMES[actual["leave"]],
-            "outcome_play": outcome_play, **evaluate(release, seen, venue, ball_age, SEED + i)}
+            "bounce_index": actual["bounce_index"], "outcome_leave": outcome["leave"],
+            "outcome_play": outcome["play"], **evaluate(release, seen, venue, ball_age, SEED + i)}
 
 
 def main() -> None:

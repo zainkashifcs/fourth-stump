@@ -33,6 +33,7 @@ def conditions_for(venue: str, ball_age: float = 1.0, end: int = 0, arm: str = "
     c.sigma_swing = v["sigma_swing"]
     c.sigma_seam = v["sigma_seam"]
     c.e_z = v["e_z"]
+    c.sigma_ez = v["sigma_ez"]
     c.tilt = flip * math.radians(v["tilt_deg"])
     c.wind_x = flip * v["wind"][0]
     c.wind_y = flip * v["wind"][1]

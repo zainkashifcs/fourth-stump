@@ -7,6 +7,7 @@
 // down the pitch, so that forward speed is positive.
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -148,7 +149,8 @@ struct Conditions {
     double cs_mean = 0.10;       // mean swing coefficient; + swings towards +x (away from a right-hander)
     double sigma_swing = 0.05;   // spread of the swing coefficient between deliveries
     double sigma_seam = 0.010;   // spread of the seam deviation angle, radians
-    double e_z = 0.55;           // vertical restitution
+    double e_z = 0.55;           // mean vertical restitution
+    double sigma_ez = 0.03;      // spread of vertical restitution between deliveries (variable bounce)
     double pace_retention = kPaceRetention;
     double tilt = 0.0;           // slope of the pitch surface, radians; + deflects the ball towards +x
     double wind_x = 0.0;         // m/s, ground frame
@@ -378,11 +380,15 @@ inline PlayOutcome classify_play(double gap, const State& bat, bool bowled) noex
 }
 
 // One delivery, both actions, on the same trajectory (common random numbers).
+// `e_z` is this delivery's vertical restitution; `pitch` carries the venue's mean, which
+// is what the batter expects.
 inline DeliveryResult simulate_delivery(const Release& r, double cs, double seam_deviation, const Conditions& c,
-                                        const Pitch& pitch) noexcept {
+                                        const Pitch& pitch, double e_z) noexcept {
     const double s_bat = c.release_y - kBatPlaneY;
     const State start = release_state(r);
-    const Flight actual = make_flight(start, cs, seam_deviation, c, pitch);
+    Pitch this_bounce = pitch;
+    this_bounce.e_z = e_z;
+    const Flight actual = make_flight(start, cs, seam_deviation, c, this_bounce);
     DeliveryResult out{};
     out.bat = actual.at(s_bat);
     out.stumps = actual.at(c.release_y);
@@ -404,17 +410,18 @@ inline DeliveryResult simulate_delivery(const Release& r, double cs, double seam
 
 inline DeliveryResult simulate_delivery(const Release& r, double cs, double seam_deviation,
                                         const Conditions& c) noexcept {
-    return simulate_delivery(r, cs, seam_deviation, c, pitch_of(c));
+    return simulate_delivery(r, cs, seam_deviation, c, pitch_of(c), c.e_z);
 }
 
-// The two random draws a delivery owns, in a fixed order.
+// The three random draws a delivery owns, in a fixed order.
 struct Draws {
-    double cs, seam_deviation;
+    double cs, seam_deviation, e_z;
 };
 inline Draws draw(std::uint64_t seed, std::uint64_t index, const Conditions& c) noexcept {
     Rng rng(seed, index);
     const double cs = c.cs_mean + c.sigma_swing * normal(rng);
-    return {cs, c.sigma_seam * normal(rng)};
+    const double seam_deviation = c.sigma_seam * normal(rng);
+    return {cs, seam_deviation, std::clamp(c.e_z + c.sigma_ez * normal(rng), 0.0, 1.0)};
 }
 
 // Simulate every delivery in the batch. Each result is written to its own index and
@@ -435,7 +442,7 @@ inline void simulate_batch(const ReleaseBatch& in, const Conditions& c, std::uin
         const auto i = static_cast<std::size_t>(k);
         const Draws d = draw(seed, i, c);
         const DeliveryResult r =
-            simulate_delivery({in.x[i], in.z[i], in.vx[i], in.vy[i], in.vz[i]}, d.cs, d.seam_deviation, c, pitch);
+            simulate_delivery({in.x[i], in.z[i], in.vx[i], in.vy[i], in.vz[i]}, d.cs, d.seam_deviation, c, pitch, d.e_z);
         out.bat_x[i] = r.bat.x;
         out.bat_z[i] = r.bat.z;
         out.stumps_x[i] = r.stumps.x;

@@ -124,6 +124,7 @@ PYBIND11_MODULE(_engine, m) {
         .def_readwrite("sigma_swing", &Conditions::sigma_swing)
         .def_readwrite("sigma_seam", &Conditions::sigma_seam)
         .def_readwrite("e_z", &Conditions::e_z)
+        .def_readwrite("sigma_ez", &Conditions::sigma_ez)
         .def_readwrite("pace_retention", &Conditions::pace_retention)
         .def_readwrite("tilt", &Conditions::tilt)
         .def_readwrite("wind_x", &Conditions::wind_x)

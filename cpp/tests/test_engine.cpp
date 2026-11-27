@@ -24,6 +24,7 @@ Conditions quiet() {  // no randomness: every delivery is the mean delivery
     Conditions c;
     c.sigma_swing = 0.0;
     c.sigma_seam = 0.0;
+    c.sigma_ez = 0.0;
     return c;
 }
 
@@ -123,6 +124,37 @@ TEST_CASE("higher vertical restitution makes the same delivery arrive higher") {
     const Release r = release_to(kGoodLength, 0.23, low);
     CHECK(simulate_delivery(r, low.cs_mean, 0.0, high).stumps.z >
           simulate_delivery(r, low.cs_mean, 0.0, low).stumps.z + 0.05);
+}
+
+TEST_CASE("variable bounce changes how high a delivery arrives, not where it bounces") {
+    Conditions c = quiet();
+    c.sigma_ez = 0.03;
+    const Release r = release_to(kGoodLength, 0.23, c);
+    const std::size_t n = 2'000;
+    BatchStorage batch(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        batch.x.span()[i] = r.x, batch.z.span()[i] = r.z;
+        batch.vx.span()[i] = r.vx, batch.vy.span()[i] = r.vy, batch.vz.span()[i] = r.vz;
+    }
+    OutcomeBatch out = batch.outcomes();
+    simulate_batch(batch.releases(), c, 5, out);
+    const auto [low, high] = std::minmax_element(batch.stumps_z.span().begin(), batch.stumps_z.span().end());
+    CHECK(*high - *low > 0.10);
+    const auto [near, far] = std::minmax_element(batch.bounce_y.span().begin(), batch.bounce_y.span().end());
+    CHECK(*far - *near < 1e-12);
+    const auto [left, right] = std::minmax_element(batch.expected_x.span().begin(), batch.expected_x.span().end());
+    CHECK(*right - *left < 1e-6);  // the batter expects the mean bounce; only the commit time shifts
+}
+
+TEST_CASE("a drawn restitution stays between zero and one") {
+    Conditions c;
+    c.e_z = 0.95;
+    c.sigma_ez = 0.5;
+    for (std::uint64_t i = 0; i < 10'000; ++i) {
+        const double e_z = draw(1, i, c).e_z;
+        REQUIRE(e_z >= 0.0);
+        REQUIRE(e_z <= 1.0);
+    }
 }
 
 TEST_CASE("the bounce keeps the pace-retention fraction of speed along the pitch") {

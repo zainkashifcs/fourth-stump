@@ -24,7 +24,9 @@ The same release at every venue, under that venue's conditions.
 | `venue`, `ball_age`, `arm`, `end` | Which case this is |
 | `path` | `[x, y, z]` points of the mean delivery (mean swing, no seam deviation), release first, stumps last |
 | `bounce_index` | Index into `path` of the bounce point, or `-1` if it did not bounce |
-| `fan` | Ten sampled deliveries (random swing and seam deviation) as `[x, y, z]` paths, to show the spread |
+| `fan` | Ten sampled deliveries (random swing, seam deviation and bounce height) as `[x, y, z]` paths, to show the spread |
+| `fan_bounce_index` | For each `fan` path, the index of its bounce point, or `-1` |
+| `fan_outcomes` | For each `fan` path, `{leave, play}`: what happens to that delivery under each action, using the same names as `outcome_leave` and `outcome_play` below |
 | `p_wicket_leave`, `p_wicket_play` | Probability of dismissal for each action |
 | `p_middled`, `p_edged`, `p_missed` | Outcome probabilities when played; they sum to 1 |
 | `wicket_cost` | Wicket cost (lambda) used, in runs |
@@ -41,4 +43,4 @@ One actual delivery with random swing and seam deviation.
 | `path`, `bounce_index` | As for a scenario, but the actual path. Everything after `bounce_index` is what the game hides |
 | `outcome_leave` | `"safe"` or `"bowled"`: what happens to this delivery if left |
 | `outcome_play` | `"middled"`, `"edged_safe"`, `"edged_caught"`, `"missed"` or `"missed_bowled"`: what happens if played |
-| `p_*`, `wicket_cost`, `ev_leave`, `ev_play`, `best` | As for a scenario, computed over what the batter can know at the bounce: this delivery's swing, with its seam deviation still random |
+| `p_*`, `wicket_cost`, `ev_leave`, `ev_play`, `best` | As for a scenario, computed over what the batter can know at the bounce: this delivery's swing, with its seam deviation and bounce height still random |

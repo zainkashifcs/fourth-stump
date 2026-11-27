@@ -10,8 +10,12 @@ import { toScene } from './coords.js';
 import { buildWorld } from './world.js';
 import { createPlay } from './play.js';
 import { WATCHING } from './outcomes.js';
-import { CAMERAS, RELEASE, VERTICAL_FOV, cutAt, fovFor, shotFor } from './director.js';
+import {
+  CAMERAS, RELEASE, VERTICAL_FOV, cutAt, fovFor, shakeOffset, shotFor, showsKeeper,
+} from './director.js';
 import { buildBall } from './models/ball.js';
+import { KEEPER_LAYER, buildKeeper } from './models/keeper.js';
+import { buildBurst } from './models/burst.js';
 import { buildStumps } from './models/stumps.js';
 import { buildBatter } from './models/batter.js';
 import { buildBowler } from './models/bowler.js';
@@ -44,12 +48,14 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
     batter: buildBatter(models.batter, constants),
     bowler: buildBowler(models.bowler),
     wicket: buildStumps(models.stumps, constants, 0),
+    keeper: buildKeeper(models.keeper),
+    burst: buildBurst(),
   };
   const slip = buildSlip(models.slip);
   const fielder = buildRingFielder(models.fielder, constants);
   const backdrops = buildBackdrops(Object.fromEntries(venueKeys.map((key) => [key, models[key]])), constants.pitch_length);
   scene.add(
-    actors.ball.group, actors.batter.group, actors.bowler.group, actors.wicket.group,
+    actors.ball.group, actors.batter.group, actors.bowler.group, actors.wicket.group, actors.keeper.group, actors.burst.group,
     buildStumps(models.stumps, constants, constants.pitch_length).group, // the bowler's end, never broken
     slip.group, fielder.group, ...Object.values(backdrops),
   );
@@ -57,6 +63,7 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
 
   const camera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500); // the visitor's, moved by dragging
   const directorCamera = new THREE.PerspectiveCamera(VERTICAL_FOV, 1, 0.1, 1500);
+  const shakeVector = new THREE.Vector3();
   const controls = new OrbitControls(camera, canvas);
   controls.enableZoom = false; // the wheel scrolls the page
   controls.maxPolarAngle = Math.PI / 2 - 0.03;
@@ -122,7 +129,7 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
     clearPlay(index);
     const view = views[index];
     const lead = spec.runUp && !reducedMotion.matches ? RELEASE : 0;
-    const play = createPlay({ ...spec, lead }, constants, slip.catchPoint);
+    const play = createPlay({ ...spec, lead }, constants, slip.catchPoint, { batY: actors.batter.contactY });
     play.group.visible = false;
     scene.add(play.group);
     Object.assign(view, {
@@ -200,13 +207,19 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
       if (other.play) other.play.group.visible = other === view;
     });
     actors.bowler.group.visible = Boolean(view.play);
+    const animate = !reducedMotion.matches;
     if (!view.play) {
       actors.ball.group.visible = false;
       actors.batter.pose(clock, null);
       actors.wicket.pose(null);
+      actors.keeper.pose({ clock: idle, animate });
+      actors.burst.pose(null);
     } else {
-      view.play.apply(view.time, actors, clock);
+      view.play.apply(view.time, actors, clock, { animate });
     }
+    // the stumps' jolt, put on the camera only while this view is drawn (draw takes it off again)
+    const hit = view.play?.animation.ball === 'stumps' && animate ? view.time - view.play.eventTime : null;
+    view.shake = shakeOffset(hit);
 
     const presetFov = fovFor(aspect, CAMERAS[cameraName].minHorizontalFov);
     if (!view.play || view.play.lead === 0 || takenOver) {
@@ -214,7 +227,7 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
       camera.aspect = aspect;
       camera.fov = presetFov;
       camera.updateProjectionMatrix();
-      return camera;
+      return withKeeper(view, camera, showsKeeper(cameraName));
     }
     const cut = cutAt(view.time, {
       eventTime: view.play.decided ? view.play.eventTime : Infinity,
@@ -234,7 +247,15 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
     directorCamera.aspect = aspect;
     directorCamera.fov = shot.fov == null ? presetFov : shot.fov * (fovFor(aspect) / VERTICAL_FOV);
     directorCamera.updateProjectionMatrix();
-    return directorCamera;
+    return withKeeper(view, directorCamera, showsKeeper(cameraName, cut));
+  }
+
+  // Draws the keeper from this camera or not (director.js, showsKeeper); a ball he holds goes with him.
+  function withKeeper(view, cam, shown) {
+    if (shown) cam.layers.enable(KEEPER_LAYER);
+    else cam.layers.disable(KEEPER_LAYER);
+    if (view.play?.held && !shown) actors.ball.group.visible = false;
+    return cam;
   }
 
   function draw(clock) {
@@ -255,7 +276,10 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
       const bottom = frame.bottom - rect.bottom;
       renderer.setViewport(left, bottom, rect.width, rect.height);
       renderer.setScissor(left, bottom, rect.width, rect.height);
-      renderer.render(scene, pose(view, rect.width / rect.height, clock));
+      const cam = pose(view, rect.width / rect.height, clock);
+      if (view.shake) cam.position.add(shakeVector.copy(toScene(...view.shake)));
+      renderer.render(scene, cam);
+      if (view.shake) cam.position.sub(shakeVector);
     });
   }
 
@@ -276,8 +300,16 @@ export function createStage(constants, venueKeys, models, { onSound } = {}) {
   const report = () => ({
     clips: {
       batter: [...actors.batter.clips], bowler: [...actors.bowler.clips], stumps: [...actors.wicket.clips],
-      slip: [...slip.clips], fielder: [...fielder.clips],
+      slip: [...slip.clips], fielder: [...fielder.clips], keeper: [...actors.keeper.clips],
     },
+    // each view's delivery posed at the instant the ball reaches the bat: the bat's steer there,
+    // { outcome, kind, weight, error, limited, hands } with distances in metres (redrawn next frame)
+    contact: views.filter((view) => view.play?.decided).map((view) => {
+      view.play.apply(view.play.contactTime, actors, 0, { animate: false });
+      const steer = actors.batter.lastSteer;
+      invalidate();
+      return { outcome: view.play.animation.name, ...(steer ?? { kind: null }) };
+    }),
     textures: textureReport(),
   });
 

@@ -148,12 +148,15 @@ kbd { padding: 0 6px; border: 1px solid currentColor; }
 .venue-head { display: grid; align-content: start; gap: 6px; padding-bottom: 6px; }
 /* a dark header under a thin strip of the venue colour */
 .venue-title {
-  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0 12px;
   padding: 4px 14px 2px; background: var(--panel); text-transform: uppercase;
 }
-.venue-title::before { content: ""; flex: 0 0 calc(100% + 28px); height: 3px; margin: -4px -14px 5px; background: var(--venue, var(--ink)); }
+.venue-title::before { content: ""; grid-column: 1 / -1; height: 3px; margin: -4px -14px 5px; background: var(--venue, var(--ink)); }
 .venue-title h2 { font-size: 1.6rem; line-height: 1.1; color: var(--ink); }
 .venue-meta { color: var(--dim); }
+/* always on its own row, so the three cards' headers are the same height */
+.venue-replay { grid-column: 1 / -1; justify-self: start; min-height: 24px; margin: 2px 0 4px; padding: 0 8px; font-size: 1rem; line-height: 1.2; }
+.venue-replay:disabled { opacity: 0.5; cursor: default; }
 .plot-key { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; min-height: calc(1.35em + 8px); color: var(--ink); text-transform: uppercase; }
 .key { display: inline-block; width: 0.62em; height: 0.62em; margin-right: 0.45em; border-radius: 50%; border: 2px solid var(--dim); }
 .key-mean { background: var(--ink); border-color: var(--ink); }

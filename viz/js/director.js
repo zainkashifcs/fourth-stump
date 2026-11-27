@@ -49,6 +49,25 @@ export function cutAt(time, { eventTime = Infinity, camera = 'stumps', through =
   };
 }
 
+// Whether the keeper is drawn. Crouched 1.4 m behind the stumps he would stand between the
+// behind-the-stumps camera and everything it is there to show (batter, wicket, the ball's path),
+// so that camera, and its close-up, leave him out. The cut from behind the bowler's mark and the
+// one side-on at the crease look back down the pitch and keep him, as do side on and from above.
+// preset: the camera chosen; cut: the director's cut when a run-up is shown, else null.
+export function showsKeeper(preset, cut = null) {
+  if (cut && cut.id < 3) return true;
+  return (cut?.camera ?? preset) !== 'stumps';
+}
+
+// The camera's jolt as the stumps are hit: 25 ms, about 1.5 cm, dying away. Metres to add to
+// the camera's position (data axes), or null outside it. sinceHit: seconds since the stumps broke.
+export const SHAKE = { seconds: 0.025, size: 0.015 };
+export function shakeOffset(sinceHit) {
+  if (typeof sinceHit !== 'number' || !(sinceHit >= 0) || sinceHit >= SHAKE.seconds) return null;
+  const left = SHAKE.size * (1 - sinceHit / SHAKE.seconds);
+  return [left * Math.sin(sinceHit * 1300), 0, left * Math.cos(sinceHit * 1700)];
+}
+
 const mix = (a, b, t) => a.map((value, i) => value + (b[i] - value) * t);
 
 // Where the live camera is. side: +1 for a right-armer, -1 for a left-armer

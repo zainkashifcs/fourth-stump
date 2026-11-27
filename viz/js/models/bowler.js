@@ -5,6 +5,7 @@
 // is its mirror image, which puts the body on the other side of the stumps.
 import * as THREE from 'three';
 import { toScene } from '../coords.js';
+import { followThrough } from '../geometry.js';
 import { createRig } from './rig.js';
 import { placeholderFigure } from './placeholder.js';
 
@@ -69,6 +70,11 @@ export function buildBowler(gltf) {
     group.scale.set(mirror * size, size, size);
     group.position.copy(origin);
     group.position.z -= back; // scene -Z is up the pitch
+    if (sinceRelease > 0) {
+      const [x, y] = followThrough(sinceRelease, arm); // two strides on, peeling off the pitch
+      group.position.x += x;
+      group.position.z -= y;
+    }
     group.updateMatrixWorld(true);
   }
 

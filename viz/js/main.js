@@ -14,7 +14,7 @@ import { createLive } from './live.js';
 const main = document.querySelector('#app');
 const tools = document.querySelector('#tools');
 const colophon = document.querySelector('#colophon');
-const FIGURES = ['batter', 'bowler', 'slip', 'fielder', 'stumps'];
+const FIGURES = ['batter', 'bowler', 'slip', 'fielder', 'keeper', 'stumps'];
 
 function showError(error) {
   main.replaceChildren(h(

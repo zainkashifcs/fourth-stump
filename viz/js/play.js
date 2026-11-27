@@ -13,7 +13,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { pointToScene } from './coords.js';
 import { extendToKeeper } from './geometry.js';
 import { WATCHING } from './outcomes.js';
-import { cuesFor } from './audio.js';
+import { TAKE, cuesFor } from './audio.js';
 
 const SAMPLES = 120;
 const RADIAL = 6;
@@ -126,7 +126,8 @@ function buildRing(position, color) {
 }
 
 // spec: { path, bounceIndex, arm, pauseIndex?, lead?, color, fan?, mean? }
-export function createPlay(spec, constants, catchPoint) {
+// batY: where along the pitch (data y) the ball meets the bat; the bat plane when not given.
+export function createPlay(spec, constants, catchPoint, { batY } = {}) {
   const { bounceIndex, color, arm } = spec;
   // the line runs on past the stumps to the keeper's plane; only a delivery left or missed is drawn that far
   const path = extendToKeeper(spec.path, { floor: constants.ball_radius });
@@ -136,12 +137,12 @@ export function createPlay(spec, constants, catchPoint) {
   const flight = length / FLIGHT_SPEED;
   const ground = constants.ball_radius;
 
-  // where the ball reaches the bat: the first sample past the popping crease, after any bounce
-  const afterBounce = Math.ceil((bounceFraction ?? 0.5) * SAMPLES);
-  const found = line.points.findIndex((p, i) => i >= afterBounce && p.z >= -constants.bat_plane_y);
-  const batFraction = found < 0 ? stumpsFraction : found / SAMPLES;
+  // where the ball reaches the bat: the plane of the bat's face at contact (models/batter.js), exactly
+  const batFraction = fractionAtPlane(line.points, batY ?? constants.bat_plane_y);
   const batTime = batFraction * flight;
-  const lineAtBat = line.getPoint(batFraction).x;
+  const atBat = line.getPoint(batFraction); // the ball as it reaches the bat, where a played ball is met
+  const lineAtBat = atBat.x;
+  const atKeeper = line.getPoint(1); // the end of the drawn line: the keeper's plane
   const pauseTime = spec.pauseIndex == null ? null
     : (spec.pauseIndex === bounceIndex && bounceFraction != null ? bounceFraction : fractionAtIndex(path, spec.pauseIndex)) * flight;
 
@@ -173,9 +174,11 @@ export function createPlay(spec, constants, catchPoint) {
     line.getPoint(endFraction, from);
   }
 
+  let held = false; // the ball is in the keeper's gloves this frame
+
   // Where the ball is `tau` seconds after it leaves the line: off the bat, at the stumps, or at the keeper.
   // Scene axes: +X off side, +Y up, +Z behind the batter's wicket.
-  function afterEvent(tau, ball) {
+  function afterEvent(tau, ball, keeper) {
     const p = ball.group.position.copy(from);
     let scale = 1;
     if (animation.ball === 'dead') {
@@ -200,19 +203,44 @@ export function createPlay(spec, constants, catchPoint) {
       p.x += 0.4 * easeOut(q); // glances off the stump and stops beside the wicket, in shot
       p.z += 0.3 * easeOut(q);
       p.y = THREE.MathUtils.lerp(from.y, ground, q * q);
+    } else if (keeper?.holding) {
+      keeper.gloves(p); // taken: it stays in his gloves
+      held = true;
     } else {
-      scale = 1 - smooth(clamp01(tau / 0.15)); // taken by the keeper
+      scale = 1 - smooth(clamp01(tau / 0.15)); // no keeper to take it: it fades at his plane
     }
     ball.group.scale.setScalar(Math.max(scale, 0.001));
     ball.group.visible = scale > 0.01;
   }
 
-  // actors: { ball, bowler, batter, wicket }. clock: seconds that always run, for the idle loop.
-  function apply(time, actors, clock = time) {
+  // What the keeper does: gather a ball that goes through, celebrate a dismissal, else crouch.
+  // When the ball leaves the line (seconds from the release). A ball that goes through takes
+  // exactly TAKE from the stumps to the keeper's gloves, the instant his gloves close on it in
+  // the sound (audio.js); everywhere else it flies at FLIGHT_SPEED.
+  const stumpsTime = stumpsFraction * flight;
+  const endOfLine = () => (animation.ball === 'through' ? stumpsTime + TAKE : endFraction * flight);
+  // How far along the line (0..1) the ball is t seconds after the release.
+  function along(t) {
+    if (animation.ball === 'through' && t > stumpsTime) return Math.min(stumpsFraction + (1 - stumpsFraction) * ((t - stumpsTime) / TAKE), 1);
+    return THREE.MathUtils.clamp(t / flight, 0, endFraction);
+  }
+
+  function keeperFor(t, eventTime, endTime) {
+    if (animation === WATCHING) return { mode: 'idle' };
+    if (animation.ball === 'through') return { mode: 'gather', since: t - endTime, ball: atKeeper };
+    if (animation.ball === 'stumps') return { mode: 'celebrate', since: t - eventTime };
+    if (animation.ball === 'edge-carry') return { mode: 'celebrate', since: t - eventTime - CATCH };
+    return { mode: 'idle' };
+  }
+
+  // actors: { ball, bowler, batter, wicket, keeper?, burst? }. clock: seconds that always run, for the
+  // idle loops. animate: false under reduced motion (no head turn, keeper crouching, no burst).
+  function apply(time, actors, clock = time, { animate = true } = {}) {
+    held = false;
     const t = time - lead; // seconds since the ball left the hand
     const eventTime = eventFraction * flight;
-    const endTime = endFraction * flight;
-    const f = THREE.MathUtils.clamp(t / flight, 0, endFraction);
+    const endTime = endOfLine();
+    const f = along(t);
     const drawn = Math.floor(f * SAMPLES);
     tube.geometry.setDrawRange(0, drawn * RADIAL * 6);
     curtain.geometry.setDrawRange(0, drawn * 6);
@@ -232,6 +260,9 @@ export function createPlay(spec, constants, catchPoint) {
       appealAt: animation.flash ? eventTime + (caught ? CATCH : 0) : null,
     });
 
+    // the keeper first, so a ball he has taken can sit in his gloves
+    actors.keeper?.pose({ clock, animate, ...keeperFor(t, eventTime, endTime) });
+
     const { ball } = actors;
     ball.group.visible = true;
     ball.group.scale.setScalar(1);
@@ -239,16 +270,25 @@ export function createPlay(spec, constants, catchPoint) {
       actors.bowler.handPosition(ball.group.position); // still in the hand
     } else {
       if (t <= endTime) line.getPoint(f, ball.group.position);
-      else afterEvent(t - endTime, ball);
-      ball.group.position.y += ball.lift * clamp01(t / LIFT_IN);
+      else afterEvent(t - endTime, ball, animate ? actors.keeper : null);
+      if (!held) ball.group.position.y += ball.lift * clamp01(t / LIFT_IN);
     }
     ball.spin.rotation.x = -Math.max(t, 0) * 16;
 
     // the batter never moves before the pause, so the game gives nothing away
-    const shot = animation.batter === 'stance' ? null : animation.ball.startsWith('edge') ? 'edge' : animation.batter;
-    const earliest = pauseTime == null ? -Infinity : pauseTime - batTime;
-    actors.batter.pose(clock, shot, t - batTime, earliest, lineAtBat + animation.bat);
+    actors.batter.pose(clock, animation === WATCHING ? null : {
+      animation,
+      sinceArrival: t - batTime,
+      earliest: pauseTime == null ? -Infinity : pauseTime - batTime,
+      lineX: lineAtBat + animation.bat,
+      impact: atBat,
+      ball: ball.group.position,
+      sinceEvent: t - eventTime,
+      animate,
+    });
     actors.wicket.pose(animation.ball === 'stumps' ? t - eventTime : null);
+    const puff = animation.ball === 'dead' ? 'dust' : animation.ball.startsWith('edge') ? 'flash' : null;
+    actors.burst?.pose(animate ? puff : null, t - eventTime, atBat);
   }
 
   // The sounds this delivery makes and when, on the same clock as apply().
@@ -277,8 +317,12 @@ export function createPlay(spec, constants, catchPoint) {
     lead,
     pauseTime: pauseTime == null ? null : lead + pauseTime,
     impact, // where the ball meets the bat or the stumps, in scene coordinates
+    get held() { return held; }, // the ball sits in the keeper's gloves in the frame last posed
+    contactTime: lead + batTime, // when the ball reaches the bat, on the same clock as apply()
+    get animation() { return animation; },
     get decided() { return animation !== WATCHING; },
     get eventTime() { return lead + eventFraction * flight; },
-    get duration() { return lead + endFraction * flight + TAIL[animation.ball]; },
+    get duration() { return lead + endOfLine() + TAIL[animation.ball]; },
+    get keeperTime() { return animation.ball === 'through' ? lead + endOfLine() : null; }, // the ball in his gloves
   };
 }

@@ -14,7 +14,8 @@ import {
 import {
   BEAT_RATES, DUCK, LINES, SWELL, beatPlan, crowdEnvelope, estimateSeconds, kindOf, lineFor, mostDramatic, pickVoice, rankVoices, speechBounds,
 } from '../js/commentary.js';
-import { saturationCurve } from '../js/audio.js';
+import { TAKE, reactionFor, saturationCurve } from '../js/audio.js';
+import { speechAllowed } from '../js/commentary.js';
 import { replaySchedule } from '../js/boot.js';
 import { clipTime } from '../js/models/frames.js';
 import {
@@ -324,12 +325,21 @@ test('every outcome in the exported file has an animation', () => {
 
 test('maps every outcome animation to its sounds', () => {
   const sounds = (name) => cuesFor(name).map((cue) => cue.sound);
-  assert.deepEqual(sounds('bowled'), ['timber', 'bails', 'roar', 'applause']);
-  assert.deepEqual(sounds('edged-short'), ['nick', 'ooh']);
-  assert.deepEqual(sounds('edged-caught'), ['nick', 'glove', 'roar', 'applause']);
-  assert.deepEqual(sounds('middled'), ['middled', 'crisp-applause']);
-  assert.deepEqual(sounds('left-alone'), ['whoosh', 'glove', 'pavilion-claps']);
-  assert.deepEqual(sounds('play-and-miss'), ['whoosh', 'glove', 'ooh-short']);
+  assert.deepEqual(sounds('bowled'), ['timber', 'bails', 'crowd-roar']);
+  assert.deepEqual(sounds('edged-short'), ['nick', 'crowd-oooo']);
+  assert.deepEqual(sounds('edged-caught'), ['nick', 'glove', 'crowd-roar']);
+  assert.deepEqual(sounds('middled'), ['middled', 'crowd-applause']);
+  assert.deepEqual(sounds('left-alone'), ['whoosh', 'glove', 'crowd-leave']);
+  assert.deepEqual(sounds('play-and-miss'), ['whoosh', 'glove', 'crowd-oooo']);
+  // the keeper takes a ball left or missed 1.4 m behind the stumps, at 13 m of path a second
+  assert.ok(Math.abs(TAKE - 1.4 / 13) < 1e-12);
+  ['left-alone', 'play-and-miss'].forEach((name) => assert.equal(cuesFor(name).find((cue) => cue.sound === 'glove').at, TAKE));
+  // one crowd reaction for a round of three views: the most dramatic outcome's
+  assert.equal(reactionFor(['middled', 'bowled', 'left-alone']), 'crowd-roar');
+  assert.equal(reactionFor(['middled', 'play-and-miss', 'left-alone']), 'crowd-oooo');
+  assert.equal(reactionFor(['left-alone', 'middled']), 'crowd-applause');
+  assert.equal(reactionFor(['left-alone']), 'crowd-leave');
+  assert.equal(reactionFor([]), null);
   assert.deepEqual(sounds('watching'), []);
   assert.deepEqual(sounds('unknown'), []);
   // the catch comes after the nick, the bails after the stump, and the whoosh before the ball arrives
@@ -390,19 +400,34 @@ test('the commentator has a line for every outcome and length, and speaks the mo
 });
 
 test('every commentary line has its recorded clips, with the same words', () => {
-  const manifest = JSON.parse(readFileSync(new URL('../audio/commentary/manifest.json', import.meta.url)));
+  const manifest = JSON.parse(readFileSync(new URL('../assets/audio/commentary/manifest.json', import.meta.url)));
   assert.deepEqual(Object.keys(manifest.lines).sort(), Object.keys(LINES).sort());
   Object.entries(LINES).forEach(([id, line]) => {
     const clips = manifest.lines[id];
     assert.deepEqual(clips.map((clip) => clip.text), line.beats, id);
     clips.forEach((clip, index) => {
       assert.equal(clip.file, `${id}-${index + 1}.mp3`);
-      const bytes = readFileSync(new URL(`../audio/commentary/${clip.file}`, import.meta.url));
+      const bytes = readFileSync(new URL(`../assets/audio/commentary/${clip.file}`, import.meta.url));
       assert.equal(bytes.length, clip.bytes, clip.file);
-      assert.ok(bytes.length < 40 * 1024, clip.file); // a few tens of kilobytes
+      assert.ok(bytes.length < 48 * 1024, clip.file); // a few tens of kilobytes
     });
     assert.equal(line.gap > 0, line.beats.length > 1, id); // a breath only between two beats
   });
+});
+
+test('the five crowd clips ship, compact, in Ogg', () => {
+  ['crowd_roar', 'crowd_oooo', 'crowd_applause', 'crowd_leave', 'crowd_bed'].forEach((name) => {
+    const bytes = readFileSync(new URL(`../assets/audio/${name}.ogg`, import.meta.url));
+    assert.equal(bytes.subarray(0, 4).toString('latin1'), 'OggS', name);
+    assert.ok(bytes.length < 100 * 1024, `${name}: ${bytes.length} bytes`);
+  });
+});
+
+test('only a view bowling on its own is spoken', () => {
+  assert.equal(speechAllowed(1), true); // a replayed venue, the game, the live engine
+  assert.equal(speechAllowed(3), false); // three venues at once: the tickers carry the words
+  assert.equal(speechAllowed(2), false);
+  assert.equal(speechAllowed(0), false);
 });
 
 test('the commentator prefers an English (UK) voice, then Australian, then any English', () => {

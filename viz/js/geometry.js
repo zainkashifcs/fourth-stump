@@ -21,6 +21,17 @@ export function batterRootX(action, ballX, { batLine = 0.7, bodyEdge = 0.25, bod
   return hits ? ballX - ballRadius - bodyEdge : STANCE_X;
 }
 
+// How far the batter's whole body may shift, as the bat is steered onto the ball in the last
+// moments of a shot: across (data x) up to the body rule on the off side and STEER_LEG on the
+// leg side (a little past LEG_LIMIT, to get inside a ball down the leg side), along the pitch at
+// most ROOT_STEP. rootX: the root now; move: [across, along], metres.
+export const ROOT_STEP = 0.12;
+export const STEER_LEG = LEG_LIMIT - 0.3;
+export function rootStep(rootX, [across, along], { bodyEdge = 0.25 } = {}) {
+  const x = Math.min(Math.max(rootX + across, Math.min(STEER_LEG, rootX)), Math.max(BODY_LIMIT - bodyEdge, rootX)) - rootX;
+  return [Math.abs(x) < 1e-15 ? 0 : x, Math.min(Math.max(along, -ROOT_STEP), ROOT_STEP)];
+}
+
 export const POPPING_CREASE = 1.22; // in front of each set of stumps (Laws of Cricket)
 
 // Law 21.5 asks for some part of the front foot behind the popping crease; the bowler here is held
@@ -29,6 +40,29 @@ export const POPPING_CREASE = 1.22; // in front of each set of stumps (Laws of C
 export function frontFoot(toeY, { stumpsY, crease = POPPING_CREASE }) {
   const behind = toeY - (stumpsY - crease);
   return { legal: behind >= -1e-9, behind };
+}
+
+// The bowler after the release: two decelerating strides on down the pitch, peeling off it
+// away from the stumps (Law 41.8 keeps him off the protected area): to the off side for a
+// right-armer over the wicket, his mirror for a left-armer. Metres to add to his root
+// (data x, y) `since` seconds after the release.
+export const FOLLOW = { seconds: 0.9, carry: 2.2, peel: 1.1 };
+export function followThrough(since, arm = 'right', { seconds, carry, peel } = FOLLOW) {
+  const q = Math.min(Math.max(since / seconds, 0), 1);
+  const side = arm === 'left' ? -1 : 1;
+  return [side * peel * q * q, -carry * (1 - (1 - q) * (1 - q))];
+}
+
+// The keeper's step across and rise for a ball reaching his plane: what his gloves at the take
+// (`gloves`, crouched where he stands) need to meet the ball, as far as a short side step and
+// straightening up allow; his arms reach for the rest. Scene axes: x across, y up.
+export const KEEPER_STEP = 0.6;
+export const KEEPER_RISE = [-0.15, 0.45];
+export function keeperReach(ball, gloves) {
+  return {
+    step: Math.min(Math.max(ball[0] - gloves[0], -KEEPER_STEP), KEEPER_STEP),
+    rise: Math.min(Math.max(ball[1] - gloves[1], KEEPER_RISE[0]), KEEPER_RISE[1]),
+  };
 }
 
 const GRAVITY = 9.81;

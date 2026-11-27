@@ -64,10 +64,10 @@ export function lengthOptions(lengths) {
 export const bowlIndex = (k, n, offset = 0) => (offset + k) % n;
 
 // One sampled delivery (engine.sample) with the visitor's action: its outcome in the
-// fan_outcomes vocabulary, and the animation that shows it (outcomes.js).
-export function bowledWith(action, delivery) {
+// fan_outcomes vocabulary, and the animation that shows it (outcomes.js) at its length.
+export function bowledWith(action, delivery, length = 'good') {
   const outcome = delivery[action];
-  return { action, outcome, animation: animationFor(action, outcome) };
+  return { action, outcome, animation: animationFor(action, outcome, length) };
 }
 
 // An engine result under the keys a scenario has in trajectories.json, so numbers.js can draw it.

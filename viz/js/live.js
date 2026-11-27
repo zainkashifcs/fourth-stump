@@ -246,7 +246,7 @@ export function createLive(data, stage, { loadEngine, loadLive, nowasm = false }
       return;
     }
     if (lastRun?.args !== args || !active) return; // the settings changed while it was sampled
-    const { outcome, animation } = bowledWith(action, delivery);
+    const { outcome, animation } = bowledWith(action, delivery, args.length);
     const words = { action: actionLabel(action), outcome: outcomeLabel(outcome), flash: animation.flash };
     caption.clear();
     stage.setPlay(0, {

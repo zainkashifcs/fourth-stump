@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install Python dependencies
+        run: uv sync
+      # Same Makefile and flags as local builds (ADR-002). Bit-reproducibility across
+      # thread counts is asserted by the tests; agreement with the Windows build is
+      # statistical only (ADR-003).
+      - name: C++ tests
+        run: make cpp-test
+      - name: Kernel error bound
+        run: make error-bound
+      - name: Python tests
+        run: make pytest
+      - name: Visualisation logic tests
+        run: node --test viz/tests/logic.test.mjs
+      - name: Benchmark (informational; runner hardware varies)
+        run: make bench

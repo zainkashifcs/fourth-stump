@@ -1,0 +1,1969 @@
+{
+  "venues": {
+    "lords": {
+      "sigma_swing": 0.05,
+      "sigma_seam": 0.007332,
+      "e_z": 0.52,
+      "catch_conversion": 0.771155,
+      "fitted": [
+        "sigma_seam",
+        "catch_conversion"
+      ],
+      "fixed": [
+        "sigma_swing",
+        "e_z"
+      ],
+      "at_bound": [],
+      "intervals": {
+        "sigma_seam": [
+          0.0070159782510501815,
+          0.0076805768672295075
+        ],
+        "catch_conversion": [
+          0.6420065765679401,
+          0.9097475753656944
+        ]
+      },
+      "target": {
+        "bowled": 0.003879401222854733,
+        "caught": 0.00990934008011807,
+        "caught_is": "all catches (upper bound on cordon catches)",
+        "runs_per_ball": 0.4826481130086443,
+        "balls": 23715
+      },
+      "simulated": {
+        "bowled": 0.00388,
+        "caught": 0.00990934008011807,
+        "edged_carried": 0.01285,
+        "middled": 0.55282,
+        "left": 0.333655,
+        "false_shot_share_of_played": 0.17036970338188173,
+        "runs_per_ball": 0.4826481130086443
+      },
+      "runs_middled": 0.8730655783232233,
+      "catch_conversion_range": {
+        "wicketkeeper_catches_only": 0.30518,
+        "all_catches": 0.771155,
+        "target_caught": {
+          "wicketkeeper_catches_only": 0.00392156862745098,
+          "all_catches": 0.00990934008011807
+        }
+      },
+      "rejected_two_parameter_fit": {
+        "why_rejected": "Not shipped: with every carrying edge caught, restitution is the only lever on the catch rate, so the fit puts e_z near 0.50 at all three venues whatever their priors. That erases the difference in bounce between the venues, which the data cannot confirm or deny on two rates.",
+        "sigma_seam": 0.007315,
+        "e_z": 0.505379,
+        "intervals": {
+          "sigma_seam": [
+            0.0070002589906016524,
+            0.007666940871034545
+          ],
+          "e_z": [
+            0.49626071741107314,
+            0.5146845106187525
+          ]
+        },
+        "simulated": {
+          "bowled": 0.00388,
+          "caught": 0.009895
+        },
+        "loss": 2.121032606968575e-06
+      }
+    },
+    "perth": {
+      "sigma_swing": 0.04,
+      "sigma_seam": 0.008925,
+      "e_z": 0.62,
+      "catch_conversion": 0.173758,
+      "fitted": [
+        "sigma_seam",
+        "catch_conversion"
+      ],
+      "fixed": [
+        "sigma_swing",
+        "e_z"
+      ],
+      "at_bound": [],
+      "intervals": {
+        "sigma_seam": [
+          0.00808796672458865,
+          0.009534581606082808
+        ],
+        "catch_conversion": [
+          0.13558031860187042,
+          0.22706801508969246
+        ]
+      },
+      "target": {
+        "bowled": 0.002739976253539136,
+        "caught": 0.0094072518038177,
+        "caught_is": "all catches (upper bound on cordon catches)",
+        "runs_per_ball": 0.5161201936249886,
+        "balls": 10949
+      },
+      "simulated": {
+        "bowled": 0.00274,
+        "caught": 0.0094072518038177,
+        "edged_carried": 0.05414,
+        "middled": 0.564995,
+        "left": 0.27805,
+        "false_shot_share_of_played": 0.21740425237204786,
+        "runs_per_ball": 0.5161201936249886
+      },
+      "runs_middled": 0.9134951523907089,
+      "catch_conversion_range": {
+        "wicketkeeper_catches_only": 0.075914,
+        "all_catches": 0.173758,
+        "target_caught": {
+          "wicketkeeper_catches_only": 0.004109964380308704,
+          "all_catches": 0.0094072518038177
+        }
+      },
+      "rejected_two_parameter_fit": {
+        "why_rejected": "Not shipped: with every carrying edge caught, restitution is the only lever on the catch rate, so the fit puts e_z near 0.50 at all three venues whatever their priors. That erases the difference in bounce between the venues, which the data cannot confirm or deny on two rates.",
+        "sigma_seam": 0.007069,
+        "e_z": 0.502137,
+        "intervals": {
+          "sigma_seam": [
+            0.006513155004995507,
+            0.007419038035023467
+          ],
+          "e_z": [
+            0.4895551152271754,
+            0.52177446102278
+          ]
+        },
+        "simulated": {
+          "bowled": 0.00274,
+          "caught": 0.0094
+        },
+        "loss": 5.947799179273584e-07
+      }
+    },
+    "newlands": {
+      "sigma_swing": 0.04,
+      "sigma_seam": 0.007115,
+      "e_z": 0.56,
+      "catch_conversion": 0.487154,
+      "fitted": [
+        "sigma_seam",
+        "catch_conversion"
+      ],
+      "fixed": [
+        "sigma_swing",
+        "e_z"
+      ],
+      "at_bound": [],
+      "intervals": {
+        "sigma_seam": [
+          0.006607561649515411,
+          0.007510671011892481
+        ],
+        "catch_conversion": [
+          0.40149287487198915,
+          0.6098147531761571
+        ]
+      },
+      "target": {
+        "bowled": 0.0022319918836658775,
+        "caught": 0.011362867771389923,
+        "caught_is": "all catches (upper bound on cordon catches)",
+        "runs_per_ball": 0.5000338180588434,
+        "balls": 14785
+      },
+      "simulated": {
+        "bowled": 0.00223,
+        "caught": 0.011362867771389923,
+        "edged_carried": 0.023325,
+        "middled": 0.58485,
+        "left": 0.309775,
+        "false_shot_share_of_played": 0.15266760838856896,
+        "runs_per_ball": 0.5000338180588434
+      },
+      "runs_middled": 0.8549778884480523,
+      "catch_conversion_range": {
+        "wicketkeeper_catches_only": 0.171084,
+        "all_catches": 0.487154,
+        "target_caught": {
+          "wicketkeeper_catches_only": 0.0039905309435238415,
+          "all_catches": 0.011362867771389923
+        }
+      },
+      "rejected_two_parameter_fit": {
+        "why_rejected": "Not shipped: with every carrying edge caught, restitution is the only lever on the catch rate, so the fit puts e_z near 0.50 at all three venues whatever their priors. That erases the difference in bounce between the venues, which the data cannot confirm or deny on two rates.",
+        "sigma_seam": 0.00685,
+        "e_z": 0.515817,
+        "intervals": {
+          "sigma_seam": [
+            0.0064166548645472705,
+            0.007252591399535211
+          ],
+          "e_z": [
+            0.5043569983361933,
+            0.5317261293230502
+          ]
+        },
+        "simulated": {
+          "bowled": 0.00223,
+          "caught": 0.011365
+        },
+        "loss": 8.323378251485151e-07
+      }
+    }
+  },
+  "runs_middled": 0.8805128730539948,
+  "leave_threshold": 0.3,
+  "notes": [
+    "Fitted: sigma_seam from the historical bowled rate, then catch conversion as the historical caught rate over the simulated rate of edges that carry. Fixed at the priors in data/venues.json: e_z (assumptions inside the literature range 0.46 to 0.65, ADR-006) and sigma_swing. Two rates cannot identify more than two parameters.",
+    "Catch conversion range, wicketkeeper catches only to all catches: 0.305 to 0.771 at lords, 0.076 to 0.174 at perth, 0.171 to 0.487 at newlands. The shipped value is the upper end, because all catches are an upper bound on cordon catches; the lower end counts only catches by the innings' wicketkeeper, identified by the stumping proxy in data/calibration_moments.json. sigma_seam is the same at both ends, because the bowled target is.",
+    "Fitted values are effective values for this outcome model, not measurements. Catch conversion absorbs everything between an edge that the model says carries and a catch in the scorebook: edges that fly wide of the cordon or fall between catchers, drops, and any excess of edges in the model itself.",
+    "Synthetic study, 9 fits with sigma_swing and e_z held at the truth: sigma_seam came back within 10% in 9 and catch conversion in 9; errors -2% to +1% and -5% to +4%.",
+    "Synthetic study, e_z held 0.05 from the truth (less where that would leave the 0.46 to 0.65 range): too low moves sigma_seam -20% to +0% and catch conversion +60% to +229%; too high moves them +5% to +28% and -54% to -10%. A catch conversion clamped at 1 understates the first range. The fitted values are conditional on the e_z priors, which are assumptions.",
+    "Synthetic study, sigma_swing held 50% from the truth: too low moves sigma_seam +1% to +11% and catch conversion -28% to -4%; too high moves them -11% to -2% and +9% to +56%.",
+    "Synthetic study, the exact fit ignoring the leave rule (every delivery played): sigma_seam moves -2% to +1% and catch conversion -50% to -30%. Left deliveries are almost never bowled, so the bowled rate and sigma_seam barely change. Playing them adds edges that the batter never offered, so the simulated rate of carrying edges is too high and catch conversion comes back too low.",
+    "runs_middled is not fitted. Per venue it is historical batter runs per legal ball divided by the simulated share of deliveries that are played and middled, so simulated runs per ball equal history by construction. The top-level runs_middled is the mean across venues.",
+    "Leave rule: the batter leaves when the expected arrival at the bat is more than 0.3 m outside off stump. The threshold is an assumption that cannot be fitted without line and action data (ADR-010); each venue's simulated.left is the share of deliveries left under it, and simulated.false_shot_share_of_played is the share of played deliveries edged or missed.",
+    "Simulated population: right-arm over the wicket to a right-hander with the engine's default ReleaseSpec, ball ages 3, 8, 13, 18, 23 and both bowling ends in equal parts, 200,000 deliveries per evaluation, fixed seeds (common random numbers). Left-armers, left-handers and spin are not simulated.",
+    "Historical rates are per legal ball in overs 1 to 25 of men's Tests, all bowlers and batters. Dismissals outside the model (ADR-007) are not wickets for these rates but their balls count.",
+    "Intervals are 95% percentile intervals over 200 bootstrap resamples of each venue's ball outcomes (bowled, caught or neither). They cover sampling noise in the historical counts only: balls are treated as independent, and e_z, sigma_swing, the leave rule, the release population and the choice of catch target are held fixed.",
+    "rejected_two_parameter_fit is the first parameterisation (sigma_seam and e_z fitted, every carrying edge caught), kept for the record with the reason it was rejected."
+  ],
+  "synthetic_study": {
+    "summary": {
+      "exact": {
+        "fits": 9,
+        "recovered": {
+          "sigma_seam": 9,
+          "catch_conversion": 9
+        },
+        "relative_error_range": {
+          "sigma_seam": [
+            -0.01780119545027803,
+            0.013743445748290117
+          ],
+          "catch_conversion": [
+            -0.04778303917348259,
+            0.038255125911655474
+          ]
+        }
+      },
+      "sigma_swing 50% too low": {
+        "fits": 9,
+        "recovered": {
+          "sigma_seam": 8,
+          "catch_conversion": 4
+        },
+        "relative_error_range": {
+          "sigma_seam": [
+            0.014864821592363686,
+            0.10769278579935215
+          ],
+          "catch_conversion": [
+            -0.27805642633228844,
+            -0.03775116703876613
+          ]
+        }
+      },
+      "sigma_swing 50% too high": {
+        "fits": 9,
+        "recovered": {
+          "sigma_seam": 8,
+          "catch_conversion": 2
+        },
+        "relative_error_range": {
+          "sigma_seam": [
+            -0.11042836340970696,
+            -0.02146481570466019
+          ],
+          "catch_conversion": [
+            0.09289995389580463,
+            0.5592417061611372
+          ]
+        }
+      },
+      "e_z 0.05 too low": {
+        "fits": 9,
+        "recovered": {
+          "sigma_seam": 6,
+          "catch_conversion": 0
+        },
+        "relative_error_range": {
+          "sigma_seam": [
+            -0.2002255400550953,
+            0.0034684218209770634
+          ],
+          "catch_conversion": [
+            0.6016458043579047,
+            2.2899999999999996
+          ]
+        }
+      },
+      "e_z 0.05 too high": {
+        "fits": 9,
+        "recovered": {
+          "sigma_seam": 4,
+          "catch_conversion": 1
+        },
+        "relative_error_range": {
+          "sigma_seam": [
+            0.052194231364477206,
+            0.27959191322964405
+          ],
+          "catch_conversion": [
+            -0.5358726320032245,
+            -0.09803537628092163
+          ]
+        }
+      },
+      "exact, ignoring the leave rule": {
+        "fits": 9,
+        "recovered": {
+          "sigma_seam": 9,
+          "catch_conversion": 0
+        },
+        "relative_error_range": {
+          "sigma_seam": [
+            -0.01780119545027803,
+            0.013743445748290117
+          ],
+          "catch_conversion": [
+            -0.49517755370451555,
+            -0.30051629884592024
+          ]
+        }
+      }
+    },
+    "fits": {
+      "lords": [
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.002995,
+            "caught": 0.0034544999999999997
+          },
+          "estimate": {
+            "sigma_seam": 0.006942197342795747,
+            "catch_conversion": 0.30788770053475933
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.008257522457750355,
+            "catch_conversion": 0.026292335115864596
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.025,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.002995,
+            "caught": 0.0034544999999999997
+          },
+          "estimate": {
+            "sigma_seam": 0.0077538495005954645,
+            "catch_conversion": 0.21658307210031347
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.10769278579935215,
+            "catch_conversion": -0.27805642633228844
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.07500000000000001,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.002995,
+            "caught": 0.0034544999999999997
+          },
+          "estimate": {
+            "sigma_seam": 0.006227001456132052,
+            "catch_conversion": 0.4677725118483412
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.11042836340970696,
+            "catch_conversion": 0.5592417061611372
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.47
+          },
+          "target": {
+            "bowled": 0.002995,
+            "caught": 0.0034544999999999997
+          },
+          "estimate": {
+            "sigma_seam": 0.006937940825296551,
+            "catch_conversion": 0.9869999999999999
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.008865596386207097,
+            "catch_conversion": 2.2899999999999996
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.57
+          },
+          "target": {
+            "bowled": 0.002995,
+            "caught": 0.0034544999999999997
+          },
+          "estimate": {
+            "sigma_seam": 0.00736535961955134,
+            "catch_conversion": 0.13923821039903264
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.052194231364477206,
+            "catch_conversion": -0.5358726320032245
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.002995,
+            "caught": 0.0034544999999999997
+          },
+          "estimate": {
+            "sigma_seam": 0.006942197342795747,
+            "catch_conversion": 0.15144673388864532
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.008257522457750355,
+            "catch_conversion": -0.49517755370451555
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.008905,
+            "caught": 0.0016084
+          },
+          "estimate": {
+            "sigma_seam": 0.009034077405289005,
+            "catch_conversion": 0.08100730294636112
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.0037863783654450422,
+            "catch_conversion": 0.012591286829513937
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.025,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.008905,
+            "caught": 0.0016084
+          },
+          "estimate": {
+            "sigma_seam": 0.009828683829824204,
+            "catch_conversion": 0.06343521987773615
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.09207598109157833,
+            "catch_conversion": -0.20705975152829814
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.07500000000000001,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.008905,
+            "caught": 0.0016084
+          },
+          "estimate": {
+            "sigma_seam": 0.00831931980161749,
+            "catch_conversion": 0.10952672795369425
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.07563113315361214,
+            "catch_conversion": 0.36908409942117815
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.47
+          },
+          "target": {
+            "bowled": 0.008905,
+            "caught": 0.0016084
+          },
+          "estimate": {
+            "sigma_seam": 0.009031215796388794,
+            "catch_conversion": 0.22047978067169294
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.0034684218209770634,
+            "catch_conversion": 1.7559972583961616
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.57
+          },
+          "target": {
+            "bowled": 0.008905,
+            "caught": 0.0016084
+          },
+          "estimate": {
+            "sigma_seam": 0.009619527083632836,
+            "catch_conversion": 0.04218200891686337
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.06883634262587068,
+            "catch_conversion": -0.4727248885392079
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.008905,
+            "caught": 0.0016084
+          },
+          "estimate": {
+            "sigma_seam": 0.009034077405289005,
+            "catch_conversion": 0.04446164478230823
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.0037863783654450422,
+            "catch_conversion": -0.4442294402211472
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.02114,
+            "caught": 0.017355
+          },
+          "estimate": {
+            "sigma_seam": 0.01193590818291064,
+            "catch_conversion": 0.6027088036117381
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.0053409847574467095,
+            "catch_conversion": 0.004514672686230181
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.025,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.02114,
+            "caught": 0.017355
+          },
+          "estimate": {
+            "sigma_seam": 0.012786006387269308,
+            "catch_conversion": 0.5167485484591335
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.06550053227244224,
+            "catch_conversion": -0.13875241923477744
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.07500000000000001,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.02114,
+            "caught": 0.017355
+          },
+          "estimate": {
+            "sigma_seam": 0.01132918390062917,
+            "catch_conversion": 0.7356930902924967
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.05590134161423588,
+            "catch_conversion": 0.22615515048749457
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.47
+          },
+          "target": {
+            "bowled": 0.02114,
+            "caught": 0.017355
+          },
+          "estimate": {
+            "sigma_seam": 0.01193762208601115,
+            "catch_conversion": 1.0
+          },
+          "at_bound": [
+            "catch_conversion"
+          ],
+          "relative_error": {
+            "sigma_seam": -0.005198159499070876,
+            "catch_conversion": 0.6666666666666667
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.57
+          },
+          "target": {
+            "bowled": 0.02114,
+            "caught": 0.017355
+          },
+          "estimate": {
+            "sigma_seam": 0.012890609313357847,
+            "catch_conversion": 0.3498639250075597
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.07421744277982056,
+            "catch_conversion": -0.41689345832073377
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.05,
+            "e_z": 0.52
+          },
+          "target": {
+            "bowled": 0.02114,
+            "caught": 0.017355
+          },
+          "estimate": {
+            "sigma_seam": 0.01193590818291064,
+            "catch_conversion": 0.3659462308908803
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.0053409847574467095,
+            "catch_conversion": -0.39008961518186613
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        }
+      ],
+      "perth": [
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.00062,
+            "caught": 0.0113175
+          },
+          "estimate": {
+            "sigma_seam": 0.006875391631848054,
+            "catch_conversion": 0.3114765377734966
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.01780119545027803,
+            "catch_conversion": 0.038255125911655474
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.02,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.00062,
+            "caught": 0.0113175
+          },
+          "estimate": {
+            "sigma_seam": 0.007330647907360261,
+            "catch_conversion": 0.26818720379146915
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.04723541533718012,
+            "catch_conversion": -0.10604265402843616
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.06,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.00062,
+            "caught": 0.0113175
+          },
+          "estimate": {
+            "sigma_seam": 0.006300792796569492,
+            "catch_conversion": 0.3806120733142761
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.09988674334721548,
+            "catch_conversion": 0.26870691104758704
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.57
+          },
+          "target": {
+            "bowled": 0.00062,
+            "caught": 0.0113175
+          },
+          "estimate": {
+            "sigma_seam": 0.005873115068162095,
+            "catch_conversion": 0.6842503022974608
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.16098356169112937,
+            "catch_conversion": 1.280834340991536
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.65
+          },
+          "target": {
+            "bowled": 0.00062,
+            "caught": 0.0113175
+          },
+          "estimate": {
+            "sigma_seam": 0.00761253656650251,
+            "catch_conversion": 0.23587953313880783
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.08750522378607295,
+            "catch_conversion": -0.21373488953730724
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.00062,
+            "caught": 0.0113175
+          },
+          "estimate": {
+            "sigma_seam": 0.006875391631848054,
+            "catch_conversion": 0.19645026905051205
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.01780119545027803,
+            "catch_conversion": -0.3451657698316265
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.002825,
+            "caught": 0.00441
+          },
+          "estimate": {
+            "sigma_seam": 0.009001452968217137,
+            "catch_conversion": 0.08054058990046571
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.00016144091301528718,
+            "catch_conversion": 0.006757373755821305
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.02,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.002825,
+            "caught": 0.00441
+          },
+          "estimate": {
+            "sigma_seam": 0.009300028330023311,
+            "catch_conversion": 0.07367805530030908
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.033336481113701355,
+            "catch_conversion": -0.07902430874613653
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.06,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.002825,
+            "caught": 0.00441
+          },
+          "estimate": {
+            "sigma_seam": 0.008526048242233247,
+            "catch_conversion": 0.09200918005424577
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.052661306418528064,
+            "catch_conversion": 0.150114750678072
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.57
+          },
+          "target": {
+            "bowled": 0.002825,
+            "caught": 0.00441
+          },
+          "estimate": {
+            "sigma_seam": 0.0075213805407724444,
+            "catch_conversion": 0.1499489969398164
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.16429105102528385,
+            "catch_conversion": 0.8743624617477048
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.65
+          },
+          "target": {
+            "bowled": 0.002825,
+            "caught": 0.00441
+          },
+          "estimate": {
+            "sigma_seam": 0.010153935803088437,
+            "catch_conversion": 0.06580616279937326
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.1282150892320486,
+            "catch_conversion": -0.17742296500783428
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.002825,
+            "caught": 0.00441
+          },
+          "estimate": {
+            "sigma_seam": 0.009001452968217137,
+            "catch_conversion": 0.053888922832528864
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.00016144091301528718,
+            "catch_conversion": -0.3263884645933892
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.0088,
+            "caught": 0.041457
+          },
+          "estimate": {
+            "sigma_seam": 0.011990134048093102,
+            "catch_conversion": 0.6008260869565217
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.0008221626589082209,
+            "catch_conversion": 0.001376811594202998
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.02,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.0088,
+            "caught": 0.041457
+          },
+          "estimate": {
+            "sigma_seam": 0.012303466581831058,
+            "catch_conversion": 0.5657341703056769
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.025288881819254705,
+            "catch_conversion": -0.05710971615720517
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.06,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.0088,
+            "caught": 0.041457
+          },
+          "estimate": {
+            "sigma_seam": 0.011703675224714945,
+            "catch_conversion": 0.6578387813392573
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.024693731273754627,
+            "catch_conversion": 0.09639796889876218
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.57
+          },
+          "target": {
+            "bowled": 0.0088,
+            "caught": 0.041457
+          },
+          "estimate": {
+            "sigma_seam": 0.009597293519338856,
+            "catch_conversion": 0.9609874826147428
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.2002255400550953,
+            "catch_conversion": 0.6016458043579047
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.65
+          },
+          "target": {
+            "bowled": 0.0088,
+            "caught": 0.041457
+          },
+          "estimate": {
+            "sigma_seam": 0.014075346073023833,
+            "catch_conversion": 0.541178774231447
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.17294550608531933,
+            "catch_conversion": -0.09803537628092163
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.62
+          },
+          "target": {
+            "bowled": 0.0088,
+            "caught": 0.041457
+          },
+          "estimate": {
+            "sigma_seam": 0.011990134048093102,
+            "catch_conversion": 0.4196902206924478
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.0008221626589082209,
+            "catch_conversion": -0.30051629884592024
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        }
+      ],
+      "newlands": [
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00218,
+            "caught": 0.006636
+          },
+          "estimate": {
+            "sigma_seam": 0.007096204120238031,
+            "catch_conversion": 0.2856650882479552
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.013743445748290117,
+            "catch_conversion": -0.04778303917348259
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.02,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00218,
+            "caught": 0.006636
+          },
+          "estimate": {
+            "sigma_seam": 0.007369020039668943,
+            "catch_conversion": 0.26704225352112676
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.05271714852413467,
+            "catch_conversion": -0.10985915492957743
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.06,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00218,
+            "caught": 0.006636
+          },
+          "estimate": {
+            "sigma_seam": 0.006514006943692228,
+            "catch_conversion": 0.34109483423284503
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.06942757947253886,
+            "catch_conversion": 0.13698278077615011
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.51
+          },
+          "target": {
+            "bowled": 0.00218,
+            "caught": 0.006636
+          },
+          "estimate": {
+            "sigma_seam": 0.0068143448998114935,
+            "catch_conversion": 0.6669346733668342
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.026522157169786675,
+            "catch_conversion": 1.2231155778894474
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.61
+          },
+          "target": {
+            "bowled": 0.00218,
+            "caught": 0.006636
+          },
+          "estimate": {
+            "sigma_seam": 0.008355573019226549,
+            "catch_conversion": 0.1436052802423718
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.19365328846093544,
+            "catch_conversion": -0.5213157325254274
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.007,
+            "catch_conversion": 0.3
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00218,
+            "caught": 0.006636
+          },
+          "estimate": {
+            "sigma_seam": 0.007096204120238031,
+            "catch_conversion": 0.17717260712855426
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.013743445748290117,
+            "catch_conversion": -0.40942464290481906
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00727,
+            "caught": 0.0028455999999999998
+          },
+          "estimate": {
+            "sigma_seam": 0.009016170119192753,
+            "catch_conversion": 0.080646166926456
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.001796679910305965,
+            "catch_conversion": 0.008077086580700055
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.02,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00727,
+            "caught": 0.0028455999999999998
+          },
+          "estimate": {
+            "sigma_seam": 0.009263613914179496,
+            "catch_conversion": 0.07522072429288923
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.029290434908832985,
+            "catch_conversion": -0.059740946338884604
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.06,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00727,
+            "caught": 0.0028455999999999998
+          },
+          "estimate": {
+            "sigma_seam": 0.008624130165809991,
+            "catch_conversion": 0.09000790763877906
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.04176331491000085,
+            "catch_conversion": 0.12509884548473815
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.51
+          },
+          "target": {
+            "bowled": 0.00727,
+            "caught": 0.0028455999999999998
+          },
+          "estimate": {
+            "sigma_seam": 0.008686427864817268,
+            "catch_conversion": 0.15844097995545656
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.034841348353636836,
+            "catch_conversion": 0.980512249443207
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.61
+          },
+          "target": {
+            "bowled": 0.00727,
+            "caught": 0.0028455999999999998
+          },
+          "estimate": {
+            "sigma_seam": 0.010969950691994681,
+            "catch_conversion": 0.0468604363935776
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.21888341022163127,
+            "catch_conversion": -0.41424454508027997
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.009,
+            "catch_conversion": 0.08
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.00727,
+            "caught": 0.0028455999999999998
+          },
+          "estimate": {
+            "sigma_seam": 0.009016170119192753,
+            "catch_conversion": 0.052036207369479746
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.001796679910305965,
+            "catch_conversion": -0.3495474078815032
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.01923,
+            "caught": 0.028446
+          },
+          "estimate": {
+            "sigma_seam": 0.012016174403432705,
+            "catch_conversion": 0.605427264020432
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.001347866952725374,
+            "catch_conversion": 0.009045440034053387
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.02,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.01923,
+            "caught": 0.028446
+          },
+          "estimate": {
+            "sigma_seam": 0.012178377859108363,
+            "catch_conversion": 0.5773492997767403
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.014864821592363686,
+            "catch_conversion": -0.03775116703876613
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "sigma_swing 50% too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.06,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.01923,
+            "caught": 0.028446
+          },
+          "estimate": {
+            "sigma_seam": 0.011742422211544078,
+            "catch_conversion": 0.6557399723374827
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": -0.02146481570466019,
+            "catch_conversion": 0.09289995389580463
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": true
+          }
+        },
+        {
+          "case": "e_z 0.05 too low",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.51
+          },
+          "target": {
+            "bowled": 0.01923,
+            "caught": 0.028446
+          },
+          "estimate": {
+            "sigma_seam": 0.011541983289966598,
+            "catch_conversion": 1.0
+          },
+          "at_bound": [
+            "catch_conversion"
+          ],
+          "relative_error": {
+            "sigma_seam": -0.03816805916945021,
+            "catch_conversion": 0.6666666666666667
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "e_z 0.05 too high",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.61
+          },
+          "target": {
+            "bowled": 0.01923,
+            "caught": 0.028446
+          },
+          "estimate": {
+            "sigma_seam": 0.01535510295875573,
+            "catch_conversion": 0.42463054187192123
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.27959191322964405,
+            "catch_conversion": -0.29228243021346456
+          },
+          "recovered": {
+            "sigma_seam": false,
+            "catch_conversion": false
+          }
+        },
+        {
+          "case": "exact, ignoring the leave rule",
+          "truth": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56,
+            "sigma_seam": 0.012,
+            "catch_conversion": 0.6
+          },
+          "held": {
+            "sigma_swing": 0.04,
+            "e_z": 0.56
+          },
+          "target": {
+            "bowled": 0.01923,
+            "caught": 0.028446
+          },
+          "estimate": {
+            "sigma_seam": 0.012016174403432705,
+            "catch_conversion": 0.40774027090948184
+          },
+          "at_bound": [],
+          "relative_error": {
+            "sigma_seam": 0.001347866952725374,
+            "catch_conversion": -0.32043288181753027
+          },
+          "recovered": {
+            "sigma_seam": true,
+            "catch_conversion": false
+          }
+        }
+      ]
+    }
+  }
+}

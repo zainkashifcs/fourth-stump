@@ -1,0 +1,52 @@
+// Plain-text formatting. No DOM, so it can be tested under node.
+
+const MINUS = '−';
+
+export function percent(p) {
+  return `${(p * 100).toFixed(1)}%`;
+}
+
+export function signedRuns(value) {
+  const text = Math.abs(value).toFixed(2);
+  if (Number(text) === 0) return '0.00';
+  return `${value < 0 ? MINUS : '+'}${text}`;
+}
+
+export function runs(value) {
+  return `${value.toFixed(1)} runs`;
+}
+
+export function overs(age) {
+  return `${age} ${age === 1 ? 'over' : 'overs'}`;
+}
+
+const ARMS = { right: 'Right-arm over', left: 'Left-arm over' };
+export const armLabel = (arm) => ARMS[arm] ?? arm;
+
+const ACTIONS = { leave: 'Leave', play: 'Play' };
+export const actionLabel = (action) => ACTIONS[action] ?? action;
+
+const OUTCOMES = {
+  safe: 'Left alone safely',
+  bowled: 'Bowled',
+  middled: 'Middled',
+  edged_safe: 'Edged, fell short',
+  edged_caught: 'Edged and caught',
+  missed: 'Play-and-miss',
+  missed_bowled: 'Play-and-miss, bowled',
+};
+export const outcomeLabel = (outcome) => OUTCOMES[outcome] ?? outcome;
+
+const cm = (metres) => `${Math.round(Math.abs(metres) * 100)} cm`;
+
+// Where a delivery passes the plane of the batter's stumps, in words.
+export function lineAtStumps(x, stumpHalfWidth) {
+  if (x > stumpHalfWidth) return `${cm(x - stumpHalfWidth)} outside off stump`;
+  if (x < -stumpHalfWidth) return `${cm(x + stumpHalfWidth)} outside leg stump`;
+  return 'in line with the stumps';
+}
+
+export function heightAtStumps(z, stumpHeight) {
+  const gap = z - stumpHeight;
+  return gap > 0 ? `${cm(gap)} above the bails` : `${cm(gap)} below the bails`;
+}

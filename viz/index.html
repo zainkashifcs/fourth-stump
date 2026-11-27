@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Fourth stump: leave or play at Lord's, Perth and Newlands</title>
+  <meta name="description" content="The same delivery in the fourth-stump corridor, simulated at three Test grounds, with the expected value of leaving and playing it.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23a3161f'/%3E%3Cpath d='M8 1v14' stroke='%23f4efe2' stroke-width='1.6'/%3E%3C/svg%3E">
+  <link rel="preload" href="./vendor/besley-5.3.0/besley-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./css/style.css">
+  <!-- Three.js 0.170.0, vendored. See vendor/README.md. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three-0.170.0/three.module.min.js",
+        "three/addons/": "./vendor/three-0.170.0/addons/"
+      }
+    }
+  </script>
+  <script type="module" src="./js/main.js"></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="title">
+      <svg class="mark" viewBox="0 0 46 40" aria-hidden="true">
+        <path d="M5 6v32M15 6v32M25 6v32" />
+        <path d="M3.5 5h13M13.5 5h13" class="mark-bails" />
+        <path d="M38 6v32" class="mark-fourth" />
+      </svg>
+      <h1>Fourth stump</h1>
+    </div>
+    <p class="lede">One delivery just outside off stump, bowled at three Test grounds. Should the batter leave it or play it?</p>
+    <div id="mode"></div>
+  </header>
+  <main id="app">
+    <p class="loading">Loading the deliveries. If this message stays, serve this folder over HTTP (for example <code>python -m http.server</code>) instead of opening the file directly.</p>
+  </main>
+  <noscript><p class="loading">This page needs JavaScript to draw the pitch.</p></noscript>
+</body>
+</html>

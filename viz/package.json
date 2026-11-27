@@ -1,0 +1,10 @@
+{
+  "name": "fourth-stump-viz",
+  "private": true,
+  "type": "module",
+  "description": "Static page, no build step and no dependencies. This file only tells node that js/ holds ES modules, for the tests.",
+  "scripts": {
+    "test": "node --test tests/logic.test.mjs",
+    "serve": "python -m http.server 8000"
+  }
+}
